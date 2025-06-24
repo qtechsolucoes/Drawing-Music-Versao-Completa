@@ -219,6 +219,7 @@ function drawRulers() {
 
     // X-Ruler (Time)
     xRulerCtx.fillStyle = textColor;
+    xRulerCtx.strokeStyle = textColor;
     xRulerCtx.font = rulerFont;
     xRulerCtx.textAlign = 'center';
     xRulerCtx.textBaseline = 'top';
@@ -244,10 +245,11 @@ function drawRulers() {
         }
     }
 
-    // --- Y-Ruler (Frequency) ---
     yRulerCtx.fillStyle = textColor;
+    yRulerCtx.strokeStyle = textColor;
     yRulerCtx.font = rulerFont;
     yRulerCtx.textAlign = 'right';
+    yRulerCtx.textBaseline = 'middle';
     yRulerCtx.textBaseline = 'middle';
 
     const yScroll = el.mainCanvasArea.scrollTop;
@@ -446,12 +448,26 @@ function setupEventListeners() {
 }
 
 function getEventPos(e) {
-    const rect = el.mainCanvasArea.getBoundingClientRect();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const rect = el.canvas.getBoundingClientRect(); // Obtém a posição e tamanho do canvas na viewport
+    let clientX, clientY;
+    if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+    } else if (e.changedTouches && e.changedTouches.length > 0) {
+        clientX = e.changedTouches[0].clientX;
+        clientY = e.changedTouches[0].clientY;
+    } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
+    }
 
-    const x = (clientX - rect.left + el.mainCanvasArea.scrollLeft) / state.zoomLevel;
-    const y = (clientY - rect.top + el.mainCanvasArea.scrollTop) / state.zoomLevel;
+    // Calcula a posição do cursor em relação ao canto superior esquerdo do canvas (VISÍVEL)
+    const xInCanvasView = clientX - rect.left;
+    const yInCanvasView = clientY - rect.top;
+
+    // Corrige: o scroll deve ser dividido pelo zoom e SOMADO à posição do mouse já escalada
+    const x = (xInCanvasView / state.zoomLevel) + (el.mainCanvasArea.scrollLeft / state.zoomLevel);
+    const y = (yInCanvasView / state.zoomLevel) + (el.mainCanvasArea.scrollTop / state.zoomLevel);
 
     return { x, y };
 }
@@ -1338,7 +1354,6 @@ function getElementBoundingBox(element) {
     const margin = 5;
     return { x: minX - margin, y: minY - margin, width: (maxX - minX) + 2 * margin, height: (maxY - minY) + 2 * margin };
 }
-
 function drawMarquee() {
     if (!state.isSelecting || !state.selectionStart || !state.selectionEnd) return;
     const start = state.selectionStart;
@@ -1346,13 +1361,14 @@ function drawMarquee() {
     const selectionColor = getComputedStyle(d.documentElement).getPropertyValue('--selection-glow').trim();
 
     ctx.save();
-    ctx.fillStyle = selectionColor.replace(/[^,]+(?=\))/, '0.2');
+    ctx.fillStyle = colorToRgba(selectionColor, 0.2);
     ctx.strokeStyle = selectionColor;
     ctx.lineWidth = 1;
     ctx.fillRect(start.x, start.y, end.x - start.x, end.y - start.y);
     ctx.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y);
     ctx.restore();
 }
+
 
 function drawSelectionIndicator(element) {
     const box = getElementBoundingBox(element);
@@ -2206,7 +2222,13 @@ function setActiveTool(toolName) {
     state.activeTool = toolName;
     state.lineStart = null;
 
-    Object.values(el.tools).forEach(btn => btn?.classList.remove('active'));
+    Object.values(el.tools).forEach(btn => {
+        if (btn) {
+            btn.classList.remove('active');
+        } else {
+            console.warn('Tool button is missing in DOM:', btn);
+        }
+    });
 
     if (el.tools[toolName]) {
         el.tools[toolName].classList.add('active');
@@ -2283,7 +2305,7 @@ function exportJpg() {
         const tempCtx = tempCanvas.getContext('2d');
 
         tempCtx.fillStyle = getComputedStyle(d.documentElement).getPropertyValue('--bg-dark').trim();
-        tempCtx.fillRect(0, 0, tempCanvas.width, tempCtx.height);
+        tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
 
         tempCtx.save();
         state.composition.strokes.forEach(stroke => {
@@ -2329,7 +2351,7 @@ function exportPdf() {
             format: [tempCanvas.width, tempCanvas.height]
         });
 
-        pdf.addImage(imgData, 'JPEG', 0, 0, tempCanvas.width, tempCtx.height);
+        pdf.addImage(imgData, 'JPEG', 0, 0, tempCanvas.width, tempCanvas.height);
         pdf.save(`music-drawing-${Date.now()}.pdf`);
 
     } catch (e) {
@@ -2566,7 +2588,7 @@ function bufferToWav(buffer) {
     while (pos < length) {
         for (i = 0; i < numOfChan; i++) {
             sample = Math.max(-1, Math.min(1, channels[i][offset]));
-            sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+            sample = (sample < 0 ? sample * 32768 : sample * 32767) | 0;
             view.setInt16(pos, sample, true);
             pos += 2;
         }
@@ -2632,6 +2654,34 @@ function perpendicularDistance(point, lineStart, lineEnd) {
     return Math.sqrt(ax * ax + ay * ay);
 }
 
+// --- Utility: Convert CSS color to rgba with alpha ---
+function colorToRgba(color, alpha = 1) {
+    // Try to parse rgb/rgba
+    let ctx = document.createElement('canvas').getContext('2d');
+    ctx.fillStyle = color;
+    let computed = ctx.fillStyle;
+
+    // If already rgba, just replace alpha
+    let rgbaMatch = computed.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/);
+    if (rgbaMatch) {
+        let r = rgbaMatch[1], g = rgbaMatch[2], b = rgbaMatch[3];
+        return `rgba(${r},${g},${b},${alpha})`;
+    }
+    // If hex, convert to rgb
+    if (computed[0] === '#') {
+        let hex = computed.replace('#', '');
+        if (hex.length === 3) {
+            hex = hex.split('').map(x => x + x).join('');
+        }
+        let num = parseInt(hex, 16);
+        let r = (num >> 16) & 255;
+        let g = (num >> 8) & 255;
+        let b = num & 255;
+        return `rgba(${r},${g},${b},${alpha})`;
+    }
+    // fallback
+    return color;
+}
 
 // --- STARTUP ---
 d.addEventListener('DOMContentLoaded', () => {
