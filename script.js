@@ -11,7 +11,6 @@ const AUTOSAVE_KEY = 'music-drawing-autosave';
 const ZOOM_MIN = 0.25;
 const ZOOM_MAX = 4.0;
 const ZOOM_STEP = 0.1;
-// DEFAULT_EFFECT_INTENSITY removido pois a intensidade é por slider de efeito
 
 // --- DOM ELEMENTS ---
 const el = {
@@ -19,7 +18,6 @@ const el = {
     resetViewBtn: d.getElementById('resetViewBtn'),
     playhead: d.getElementById('playhead'), colorPicker: d.getElementById('colorPicker'), lineWidth: d.getElementById('lineWidth'),
     clearBtn: d.getElementById('clearBtn'),
-    // Reverb Global, Delay Global e Delay Global Feedback removidos pois não são usados na implementação atual
     themeToggle: d.getElementById('theme-toggle'),
     themeSun: d.getElementById('theme-icon-sun'), themeMoon: d.getElementById('theme-icon-moon'),
     loadingOverlay: d.getElementById('loading-overlay'),
@@ -28,7 +26,7 @@ const el = {
     importProjectBtn: d.getElementById('importProjectBtn'),
     drawmusImporter: d.getElementById('drawmusImporter'),
 
-    exportBtn: d.getElementById('exportBtn'), 
+    exportBtn: d.getElementById('exportBtn'),
     exportJpgBtn: d.getElementById('exportJpgBtn'), exportPdfBtn: d.getElementById('exportPdfBtn'), exportWavBtn: d.getElementById('exportWavBtn'),
     undoBtn: d.getElementById('undoBtn'), redoBtn: d.getElementById('redoBtn'),
     zoomInBtn: d.getElementById('zoomInBtn'),
@@ -46,30 +44,33 @@ const el = {
     exportStartHandle: d.getElementById('export-start-handle'),
     exportEndHandle: d.getElementById('export-end-handle'),
 
-    // effectIntensitySlider removido
-
     // Ferramentas de Desenho e Interação
-    tools: { 
-        select: d.getElementById('select'), pencil: d.getElementById('pencil'), eraser: d.getElementById('eraser'), hand: d.getElementById('hand'), 
-        glissando: d.getElementById('glissando'), staccato: d.getElementById('staccato'), percussion: d.getElementById('percussion'), 
+    tools: {
+        select: d.getElementById('select'), pencil: d.getElementById('pencil'), eraser: d.getElementById('eraser'), hand: d.getElementById('hand'),
+        staccato: d.getElementById('staccato'), percussion: d.getElementById('percussion'),
         arpeggio: d.getElementById('arpeggio'), granular: d.getElementById('granular'), tremolo: d.getElementById('tremolo'),
-        line: d.getElementById('line'), circle: d.getElementById('circle'), rectangle: d.getElementById('rectangle')
+        line: d.getElementById('line'),
     },
-    // Controles de Efeitos no Desenho (agora sliders, sem `effectTools` como botões diretos)
+    // Controles de Efeitos no Desenho (sliders)
     effectSliders: {
         volumeEffect: d.getElementById('volumeEffect'), panEffect: d.getElementById('panEffect'),
-        vibratoEffect: d.getElementById('vibratoEffect'), reverbEffect: d.getElementById('reverbEffect'), 
-        delayEffect: d.getElementById('delayEffect'), 
-        lowpassFilterEffect: d.getElementById('lowpassFilterEffect'), highpassFilterEffect: d.getElementById('highpassFilterEffect'), 
-        bandpassFilterEffect: d.getElementById('bandpassFilterEffect'), notchFilterEffect: d.getElementById('notchFilterEffect'), 
+        vibratoEffect: d.getElementById('vibratoEffect'), reverbEffect: d.getElementById('reverbEffect'),
+        delayEffect: d.getElementById('delayEffect'),
+        lowpassFilterEffect: d.getElementById('lowpassFilterEffect'), highpassFilterEffect: d.getElementById('highpassFilterEffect'),
+        bandpassFilterEffect: d.getElementById('bandpassFilterEffect'), notchFilterEffect: d.getElementById('notchFilterEffect'),
         phaserEffect: d.getElementById('phaserEffect'), flangerEffect: d.getElementById('flangerEffect'), chorusEffect: d.getElementById('chorusEffect'),
         distortionEffect: d.getElementById('distortionEffect'), compressorEffect: d.getElementById('compressorEffect'),
-        gainEffect: d.getElementById('gainEffect'), tremoloAmplitudeEffect: d.getElementById('tremoloAmplitudeEffect'), 
+        tremoloAmplitudeEffect: d.getElementById('tremoloAmplitudeEffect'),
         wahEffect: d.getElementById('wahEffect'),
-        bassEq: d.getElementById('bassEq'), midEq: d.getElementById('midEq'), trebleEq: d.getElementById('trebleEq')
     },
-    timbres: { 
-        sine: d.getElementById('sine'), square: d.getElementById('square'), sawtooth: d.getElementById('sawtooth'), 
+    // Controles de Equalização Global (agora sliders também)
+    globalEqSliders: { // Renomeado de globalEqKnobs para globalEqSliders
+        bassEqGlobal: d.getElementById('bassEqGlobal'),
+        midEqGlobal: d.getElementById('midEqGlobal'),
+        trebleEqGlobal: d.getElementById('trebleEqGlobal')
+    },
+    timbres: {
+        sine: d.getElementById('sine'), square: d.getElementById('square'), sawtooth: d.getElementById('sawtooth'),
         triangle: d.getElementById('triangle'), fm: d.getElementById('fm'), pulse: d.getElementById('pulse'),
         organ: d.getElementById('organ'), noise: d.getElementById('noise'),
     }
@@ -89,18 +90,15 @@ let state = {
     activeTool: 'pencil',
     activeTimbre: 'sine',
     lastPos: { x: 0, y: 0 },
-    glissandoStart: null,
     lineStart: null,
-    circleCenter: null,
-    rectangleStart: null,
     isPlaying: false,
     playbackStartTime: 0,
     animationFrameId: null,
     audioCtx: null,
     sourceNodes: [], // Para rastrear os nós de áudio e poder pará-los (APENAS fontes)
-    composition: { 
-        strokes: [], 
-        symbols: [] 
+    composition: {
+        strokes: [],
+        symbols: []
     },
     history: [],
     historyIndex: -1,
@@ -113,8 +111,12 @@ let state = {
     isDraggingEnd: false,
     isDraggingPlayhead: false,
 
-    // effectIntensity removido
-    currentEffectValues: {}
+    currentEffectValues: {},
+    globalEqValues: {
+        bassEqGlobal: 0,
+        midEqGlobal: 0,
+        trebleEqGlobal: 0
+    }
 };
 let clipboard = [];
 
@@ -124,7 +126,7 @@ function initApp(mode = 'pc') {
     const backgroundAudio = d.getElementById('background-audio');
     if (backgroundAudio && !backgroundAudio.paused) {
         backgroundAudio.pause();
-        backgroundAudio.currentTime = 0; 
+        backgroundAudio.currentTime = 0;
     }
     d.getElementById('selection-container')?.classList.add('hidden');
     d.getElementById('app-wrapper')?.classList.remove('hidden');
@@ -143,6 +145,10 @@ function initApp(mode = 'pc') {
     resetEffectSliders();
     Object.keys(el.effectSliders).forEach(key => {
         state.currentEffectValues[key] = parseFloat(el.effectSliders[key].value);
+    });
+    // Inicializa valores do EQ Global
+    Object.keys(el.globalEqSliders).forEach(key => { // Alterado para globalEqSliders
+        state.globalEqValues[key] = parseFloat(el.globalEqSliders[key].value); // Alterado para globalEqSliders
     });
 
     setTimeout(() => {
@@ -177,7 +183,7 @@ function resizeAndRedraw() {
 }
 
 function redrawAll() {
-    ctx.clearRect(0, 0, el.canvas.width, el.canvas.height); //
+    ctx.clearRect(0, 0, el.canvas.width, el.canvas.height);
 
     ctx.save();
     ctx.scale(state.zoomLevel, state.zoomLevel);
@@ -336,11 +342,11 @@ function setupEventListeners() {
     el.themeToggle.addEventListener('click', () => applyTheme(d.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'));
 
     Object.keys(el.tools).forEach(key => el.tools[key]?.addEventListener('click', () => setActiveTool(key)));
-    
-    // Listeners para Sliders de Efeito
+
+    // Listeners para Sliders de Efeito de Desenho
     Object.keys(el.effectSliders).forEach(key => {
         const slider = el.effectSliders[key];
-        const effectType = slider.dataset.effectType; //
+        const effectType = slider.dataset.effectType;
         if (!effectType) {
             console.warn(`Slider com ID "${key}" não tem data-effect-type. Pulando listener.`);
             return;
@@ -348,6 +354,19 @@ function setupEventListeners() {
         slider?.addEventListener('input', () => {
             state.currentEffectValues[key] = parseFloat(slider.value);
             applyEffectToSelectedElements(effectType, parseFloat(slider.value));
+        });
+    });
+
+    // Listeners para Sliders de EQ Global (alterado de Knobs para Sliders)
+    Object.keys(el.globalEqSliders).forEach(key => { // Alterado para globalEqSliders
+        const slider = el.globalEqSliders[key]; // Alterado para globalEqSliders
+        slider?.addEventListener('input', () => {
+            state.globalEqValues[key] = parseFloat(slider.value);
+            if (state.isPlaying) {
+                // Se já estiver tocando, reinicia a reprodução para aplicar os novos valores
+                stopPlayback();
+                startPlayback();
+            }
         });
     });
 
@@ -444,7 +463,7 @@ function startAction(e) {
         if (state.isPlaying) {
             stopPlayback();
         }
-        return; 
+        return;
     }
 
     e.preventDefault();
@@ -471,7 +490,7 @@ function startAction(e) {
                     state.selectedElements = [clickedElement.id];
                 }
 
-                if (state.selectedElements.length > 0 && (!isMultiSelect || !isAlreadySelected)) { //
+                if (state.selectedElements.length > 0 && (!isMultiSelect || !isAlreadySelected)) {
                     state.isMoving = true;
                     el.canvas.style.cursor = 'move';
                 } else {
@@ -499,7 +518,7 @@ function startAction(e) {
             break;
         }
         case 'pencil':
-            const newStroke = { id: Date.now(), points: [pos], color: el.colorPicker.value, lineWidth: parseFloat(el.lineWidth.value), timbre: state.activeTimbre, effects: [] }; //
+            const newStroke = { id: Date.now(), points: [pos], color: el.colorPicker.value, lineWidth: parseFloat(el.lineWidth.value), timbre: state.activeTimbre, effects: [] };
             state.composition.strokes.push(newStroke);
             break;
         case 'eraser':
@@ -508,15 +527,7 @@ function startAction(e) {
         case 'hand':
             el.canvas.style.cursor = 'grabbing';
             break;
-        case 'glissando':
-            if (!state.glissandoStart) {
-                state.glissandoStart = pos;
-            } else {
-                placeSymbol(pos, state.activeTool, state.glissandoStart); 
-                state.glissandoStart = null;
-            }
-            break;
-        case 'line': 
+        case 'line':
             if (!state.lineStart) {
                 state.lineStart = pos;
             } else {
@@ -524,31 +535,12 @@ function startAction(e) {
                 state.lineStart = null;
             }
             break;
-        case 'circle': 
-            if (!state.circleCenter) {
-                state.circleCenter = pos;
-            } else {
-                const radius = Math.sqrt(Math.pow(pos.x - state.circleCenter.x, 2) + Math.pow(pos.y - state.circleCenter.y, 2));
-                placeSymbol({ x: state.circleCenter.x, y: state.circleCenter.y, radius: radius }, state.activeTool);
-                state.circleCenter = null;
-            }
-            break;
-        case 'rectangle': 
-            if (!state.rectangleStart) {
-                state.rectangleStart = pos;
-            } else {
-                const width = pos.x - state.rectangleStart.x;
-                const height = pos.y - state.rectangleStart.y;
-                placeSymbol({ x: state.rectangleStart.x, y: state.rectangleStart.y, width: width, height: height }, state.activeTool);
-                state.rectangleStart = null;
-            }
-            break;
         case 'staccato':
         case 'percussion':
         case 'arpeggio':
         case 'granular':
-        case 'tremolo': 
-            placeSymbol(pos, state.activeTool); 
+        case 'tremolo':
+            placeSymbol(pos, state.activeTool);
             break;
     }
 }
@@ -568,11 +560,11 @@ function stopAction(e) {
             x: state.selectionStart.x,
             y: state.selectionStart.y,
             width: state.selectionEnd.x - state.selectionStart.x,
-            height: state.selectionEnd.y - state.selectionStart.y, //
+            height: state.selectionEnd.y - state.selectionStart.y,
         };
 
         const allElements = [...state.composition.strokes, ...state.composition.symbols];
-        
+
         state.selectedElements = [];
         allElements.forEach(element => {
             const r2 = getElementBoundingBox(element);
@@ -580,7 +572,7 @@ function stopAction(e) {
                 state.selectedElements.push(element.id);
             }
         });
-        
+
         state.isSelecting = false;
         if (state.selectedElements.length > 0) {
             const firstSelectedElement = findElementById(state.selectedElements[0]);
@@ -591,14 +583,14 @@ function stopAction(e) {
         redrawAll();
     }
 
-    state.isDrawing = false; 
+    state.isDrawing = false;
 
     if (state.activeTool === 'hand') {
         setActiveTool('hand');
         return;
     }
-    if (['glissando', 'line', 'circle', 'rectangle'].includes(state.activeTool) && 
-        (state.glissandoStart || state.lineStart || state.circleCenter || state.rectangleStart)) {
+    if (['line'].includes(state.activeTool) &&
+        (state.lineStart)) {
         return;
     }
 
@@ -617,13 +609,13 @@ function performAction(e) {
         handlePlayheadDrag(e);
         return;
     }
-    if (!state.isDrawing) return; 
+    if (!state.isDrawing) return;
     e.preventDefault();
     const pos = getEventPos(e);
 
     if (state.isMoving) {
         const dx = pos.x - state.lastPos.x;
-        const dy = pos.y - state.lastPos.y; 
+        const dy = pos.y - state.lastPos.y;
         moveSelectedElements(dx, dy);
         state.lastPos = pos;
         redrawAll();
@@ -639,7 +631,7 @@ function performAction(e) {
     if (state.activeTool === 'hand') {
         const rawPos = { x: e.touches ? e.touches[0].clientX : e.clientX, y: e.touches ? e.touches[0].clientY : e.clientY };
         const rawLastPos = state.lastPos.rawX !== undefined ? { x: state.lastPos.rawX, y: state.lastPos.rawY } : null;
-        
+
         if(rawLastPos){
             const dx = rawPos.x - rawLastPos.x;
             const dy = rawPos.y - rawLastPos.y;
@@ -663,27 +655,12 @@ function performAction(e) {
     } else if (state.activeTool === 'eraser') {
         eraseAt(pos.x, pos.y);
     } else if (state.activeTool === 'line' && state.lineStart) {
-        redrawAll(); 
+        redrawAll();
         ctx.beginPath();
         ctx.strokeStyle = el.colorPicker.value;
         ctx.lineWidth = parseFloat(el.lineWidth.value);
         ctx.moveTo(state.lineStart.x, state.lineStart.y);
         ctx.lineTo(pos.x, pos.y);
-        ctx.stroke();
-    } else if (state.activeTool === 'circle' && state.circleCenter) {
-        redrawAll();
-        const radius = Math.sqrt(Math.pow(pos.x - state.circleCenter.x, 2) + Math.pow(pos.y - state.circleCenter.y, 2));
-        ctx.beginPath();
-        ctx.strokeStyle = el.colorPicker.value;
-        ctx.lineWidth = parseFloat(el.lineWidth.value);
-        ctx.arc(state.circleCenter.x, state.circleCenter.y, radius, 0, 2 * Math.PI);
-        ctx.stroke();
-    } else if (state.activeTool === 'rectangle' && state.rectangleStart) {
-        redrawAll();
-        ctx.beginPath();
-        ctx.strokeStyle = el.colorPicker.value;
-        ctx.lineWidth = parseFloat(el.lineWidth.value);
-        ctx.rect(state.rectangleStart.x, state.rectangleStart.y, pos.x - state.rectangleStart.x, pos.y - state.rectangleStart.y);
         ctx.stroke();
     }
 }
@@ -785,35 +762,21 @@ function handleClear() {
     }
 }
 
-function placeSymbol(options, type, glissandoStart = null) {
+function placeSymbol(options, type) {
     const symbol = {
         id: Date.now() + Math.random(),
         type: type,
         color: el.colorPicker.value,
         size: parseFloat(el.lineWidth.value),
         timbre: state.activeTimbre,
-        effects: [] //
+        effects: []
     };
 
-    if (type === 'glissando' && glissandoStart) {
-        symbol.x = glissandoStart.x;
-        symbol.y = glissandoStart.y;
-        symbol.endX = options.x;
-        symbol.endY = options.y;
-    } else if (type === 'line') {
+    if (type === 'line') {
         symbol.x = options.x;
         symbol.y = options.y;
         symbol.endX = options.endX;
         symbol.endY = options.endY;
-    } else if (type === 'circle') {
-        symbol.x = options.x;
-        symbol.y = options.y;
-        symbol.radius = options.radius;
-    } else if (type === 'rectangle') {
-        symbol.x = options.x;
-        symbol.y = options.y;
-        symbol.width = options.width;
-        symbol.height = options.height;
     } else {
         symbol.x = options.x;
         symbol.y = options.y;
@@ -833,9 +796,9 @@ function drawElementWithEffects(element) {
 
     let currentGlobalAlpha = ctx.globalAlpha;
 
-    const gainEffect = element.effects.find(e => e.type === 'volumeZone' || e.type === 'gain');
-    if (gainEffect) {
-        const gainAmount = gainEffect.params.gain || 1.0;
+    const volumeEffect = element.effects.find(e => e.type === 'volumeZone');
+    if (volumeEffect) {
+        const gainAmount = volumeEffect.params.gain || 1.0;
         currentGlobalAlpha = Math.max(0.2, Math.min(1.0, gainAmount));
         ctx.globalAlpha = currentGlobalAlpha;
     } else {
@@ -863,7 +826,7 @@ function drawElementWithEffects(element) {
         ctx.shadowOffsetX = (Math.random() - 0.5) * distortionAmount * 0.02;
         ctx.shadowOffsetY = (Math.random() - 0.5) * distortionAmount * 0.02;
     }
-    
+
     const vibratoEffect = element.effects.find(e => e.type === 'vibratoZone');
     const tremoloAmpEffect = element.effects.find(e => e.type === 'tremoloAmplitude');
     const wahEffect = element.effects.find(e => e.type === 'wah');
@@ -888,8 +851,8 @@ function drawElementWithEffects(element) {
             const scaleFactor = 1 + Math.sin(Date.now() * 0.01 * rate) * (depth * 0.2);
             ctx.scale(scaleFactor, scaleFactor);
         }
-        
-        if (wahEffect) { //
+
+        if (wahEffect) {
             const rate = wahEffect.params.rate || 2;
             const range = wahEffect.params.range || 2000;
             const wobbleFactor = Math.sin(Date.now() * 0.005 * rate) * (range / FREQ_MAX * 0.2);
@@ -904,7 +867,7 @@ function drawElementWithEffects(element) {
     } else {
         drawBaseElement(element, ctx);
     }
-    
+
     const panEffect = element.effects.find(e => e.type === 'panZone');
     if (panEffect && Math.abs(panEffect.params.pan) > 0.05) {
         ctx.save();
@@ -932,11 +895,11 @@ function drawElementWithEffects(element) {
             ctx.restore();
         }
     }
-    
-    const filterEffects = element.effects.filter(e => ['lowpassFilter', 'highpassFilter', 'bandpassFilter', 'notchFilter', 'bassEq', 'midEq', 'trebleEq'].includes(e.type));
+
+    const filterEffects = element.effects.filter(e => ['lowpassFilter', 'highpassFilter', 'bandpassFilter', 'notchFilter'].includes(e.type));
     if (filterEffects.length > 0) {
         filterEffects.forEach(effect => {
-            const intensity = effect.params.gain !== undefined ? Math.abs(effect.params.gain) : (effect.params.Q || 1);
+            const intensity = effect.params.Q || 1;
             if (intensity > 0) {
                 ctx.save();
                 ctx.globalAlpha = (currentGlobalAlpha || 1.0) * (0.1 + (intensity / 20) * 0.4);
@@ -960,17 +923,6 @@ function drawElementWithEffects(element) {
                         break;
                     case 'notchFilter':
                         shadowColor = 'rgba(255, 0, 0, 0.5)';
-                        break;
-                    case 'bassEq':
-                        shadowColor = 'rgba(0, 0, 0, 0.4)';
-                        shadowOffsetY = 3;
-                        break;
-                    case 'midEq':
-                        shadowColor = 'rgba(255, 200, 0, 0.5)';
-                        break;
-                    case 'trebleEq':
-                        shadowColor = 'rgba(255, 255, 255, 0.6)';
-                        shadowOffsetY = -3;
                         break;
                 }
                 ctx.shadowBlur = intensity * 2;
@@ -1010,7 +962,7 @@ function drawElementWithEffects(element) {
             ctx.restore();
         });
     }
-    
+
     ctx.restore();
 }
 
@@ -1032,22 +984,19 @@ function drawBaseElement(s, context) {
         context.fillStyle = s.color;
         switch(s.type) {
             case 'staccato': context.arc(s.x, s.y, s.size / 4, 0, 2 * Math.PI); context.fill(); break;
-            case 'percussion': 
-                context.moveTo(s.x - s.size/2, s.y - s.size/2); 
-                context.lineTo(s.x + s.size/2, s.y + s.size/2); //
-                context.moveTo(s.x + s.size/2, s.y - s.size/2); 
-                context.lineTo(s.x - s.size/2, s.y + s.size/2); 
-                context.stroke(); 
+            case 'percussion':
+                context.moveTo(s.x - s.size/2, s.y - s.size/2);
+                context.lineTo(s.x + s.size/2, s.y + s.size/2);
+                context.moveTo(s.x + s.size/2, s.y - s.size/2);
+                context.lineTo(s.x - s.size/2, s.y + s.size/2);
+                context.stroke();
                 break;
-            case 'glissando': context.moveTo(s.x, s.y); context.lineTo(s.endX, s.endY); context.stroke(); break;
             case 'arpeggio': context.lineWidth = Math.max(2, s.size / 15); context.moveTo(s.x - s.size, s.y + s.size/2); context.bezierCurveTo(s.x - s.size/2, s.y - s.size, s.x + s.size/2, s.y + s.size, s.x + s.size, s.y-s.size/2); context.stroke(); break;
-            case 'granular': 
-                context.fillRect(s.x - s.size, s.y - s.size/2, s.size*2, s.size); 
+            case 'granular':
+                context.fillRect(s.x - s.size, s.y - s.size/2, s.size*2, s.size);
                 break;
             case 'tremolo': context.moveTo(s.x - s.size, s.y); context.lineTo(s.x - s.size/2, s.y - s.size/2); context.lineTo(s.x, s.y); context.lineTo(s.x + s.size/2, s.y + s.size/2); context.lineTo(s.x + s.size, s.y); context.stroke(); break;
             case 'line': context.moveTo(s.x, s.y); context.lineTo(s.endX, s.endY); context.stroke(); break;
-            case 'circle': context.arc(s.x, s.y, s.radius, 0, 2 * Math.PI); context.stroke(); break;
-            case 'rectangle': context.rect(s.x, s.y, s.width, s.height); context.stroke(); break;
         }
     }
 }
@@ -1076,7 +1025,7 @@ function eraseAt(x, y) {
 // --- APLICAR EFEITOS A ELEMENTOS SELECIONADOS ---
 function applyEffectToSelectedElements(effectType, sliderValue) {
     if (state.selectedElements.length === 0) {
-        return; 
+        return;
     }
 
     state.selectedElements.forEach(id => {
@@ -1087,8 +1036,8 @@ function applyEffectToSelectedElements(effectType, sliderValue) {
             }
 
             let existingEffect = element.effects.find(e => e.type === effectType);
-            
-            const sliderElement = Object.values(el.effectSliders).find(s => s.dataset.effectType === effectType); //
+
+            const sliderElement = Object.values(el.effectSliders).find(s => s.dataset.effectType === effectType);
             if (!sliderElement) {
                 console.warn(`Slider element for effectType "${effectType}" not found.`);
                 return;
@@ -1101,16 +1050,15 @@ function applyEffectToSelectedElements(effectType, sliderValue) {
 
             switch(effectType) {
                 case 'reverbZone':
-                    params.decay = (normalizedValue * 2.5) + 0.5;
-                    params.mix = normalizedValue;
+                    params.decay = (normalizedValue * 3.5) + 0.5; // Aumentado para maior sensibilidade
+                    params.mix = normalizedValue * 1.5; // Aumentado para maior sensibilidade
                     break;
                 case 'delayZone':
                     params.time = normalizedValue * 0.75;
-                    params.feedback = normalizedValue * 0.8;
-                    params.mix = normalizedValue;
+                    params.feedback = normalizedValue * 0.9; // Aumentado para maior sensibilidade
+                    params.mix = normalizedValue * 1.5; // Aumentado para maior sensibilidade
                     break;
                 case 'volumeZone':
-                case 'gain':
                     params.gain = (sliderValue / 100) * 2;
                     break;
                 case 'panZone':
@@ -1120,8 +1068,8 @@ function applyEffectToSelectedElements(effectType, sliderValue) {
                     params.rate = (normalizedValue * 10) + 1;
                     params.depth = normalizedValue * 100;
                     break;
-                case 'lowpassFilter': //
-                    params.frequency = FREQ_MIN + (FREQ_MAX - FREQ_MIN) * normalizedValue; // Invertido para 0=baixo, 100=alto (passa tudo)
+                case 'lowpassFilter':
+                    params.frequency = FREQ_MIN + (FREQ_MAX - FREQ_MIN) * (1 - normalizedValue); // Invertido para 0=filtro total, 100=sem filtro (passa tudo)
                     params.Q = 10 * normalizedValue;
                     break;
                 case 'highpassFilter':
@@ -1162,35 +1110,22 @@ function applyEffectToSelectedElements(effectType, sliderValue) {
                     params.depth = normalizedValue;
                     break;
                 case 'wah':
-                    params.rate = (normalizedValue * 5) + 0.5; 
-                    params.range = normalizedValue * 3000; 
-                    params.q = 5 + (normalizedValue * 15); 
+                    params.rate = (normalizedValue * 5) + 0.5;
+                    params.range = normalizedValue * 3000;
+                    params.q = 5 + (normalizedValue * 15);
                     params.baseFreq = (FREQ_MIN + FREQ_MAX) / 2;
-                    break;
-                case 'bassEq':
-                    params.gain = sliderValue;
-                    params.frequency = 100;
-                    break;
-                case 'midEq':
-                    params.gain = sliderValue;
-                    params.frequency = 1000;
-                    params.Q = 1;
-                    break;
-                case 'trebleEq':
-                    params.gain = sliderValue;
-                    params.frequency = 3000;
                     break;
             }
 
+            // Define o que é um valor "neutro" para remover o efeito
             const isNeutralValue = (
-                (effectType === 'volumeZone' || effectType === 'gain') ? sliderValue === 100 :
+                (effectType === 'volumeZone') ? sliderValue === 100 :
                 (effectType === 'panZone') ? sliderValue === 0 :
-                (effectType === 'lowpassFilter') ? sliderValue === 0 : // CORREÇÃO: LowPass neutro é slider 0
+                (effectType === 'lowpassFilter') ? sliderValue === 0 :
                 (effectType === 'highpassFilter') ? sliderValue === 0 :
-                (effectType === 'bassEq' || effectType === 'midEq' || effectType === 'trebleEq') ? sliderValue === 0 :
                 sliderValue === 0
             );
-            
+
             if (isNeutralValue) {
                 element.effects = element.effects.filter(e => e.type !== effectType);
             } else {
@@ -1202,8 +1137,8 @@ function applyEffectToSelectedElements(effectType, sliderValue) {
             }
         }
     });
-    saveState(); 
-    redrawAll(); 
+    saveState();
+    redrawAll();
 }
 
 function updateEffectSlidersForSelection(element) {
@@ -1216,13 +1151,12 @@ function updateEffectSlidersForSelection(element) {
                 let sliderValue;
                 switch (effect.type) {
                     case 'reverbZone':
-                        sliderValue = effect.params.mix * 100; 
+                        sliderValue = effect.params.mix * 100;
                         break;
                     case 'delayZone':
                         sliderValue = effect.params.mix * 100;
                         break;
                     case 'volumeZone':
-                    case 'gain':
                         sliderValue = (effect.params.gain / 2) * 100;
                         break;
                     case 'panZone':
@@ -1231,9 +1165,7 @@ function updateEffectSlidersForSelection(element) {
                     case 'vibratoZone':
                         sliderValue = (effect.params.depth / 100) * 100;
                         break;
-                    case 'lowpassFilter': // CORREÇÃO: Mapeamento Low Pass
-                        // Se a frequência está em FREQ_MAX (sem filtro), slider deve ser 0.
-                        // Se a frequência está em FREQ_MIN (totalmente filtrado), slider deve ser 100.
+                    case 'lowpassFilter':
                         sliderValue = 100 - ( (effect.params.frequency - FREQ_MIN) / (FREQ_MAX - FREQ_MIN) * 100 );
                         break;
                     case 'highpassFilter':
@@ -1264,11 +1196,6 @@ function updateEffectSlidersForSelection(element) {
                     case 'wah':
                         sliderValue = (effect.params.range / 3000) * 100;
                         break;
-                    case 'bassEq':
-                    case 'midEq':
-                    case 'trebleEq':
-                        sliderValue = effect.params.gain;
-                        break;
                     default:
                         sliderValue = 0;
                 }
@@ -1285,21 +1212,15 @@ function resetEffectSliders() {
         let neutralValue;
         switch (slider.dataset.effectType) {
             case 'volumeZone':
-            case 'gain':
                 neutralValue = 100;
                 break;
             case 'panZone':
                 neutralValue = 0;
                 break;
             case 'lowpassFilter':
-                neutralValue = 0; //
-                break;
-            case 'highpassFilter':
                 neutralValue = 0;
                 break;
-            case 'bassEq':
-            case 'midEq':
-            case 'trebleEq':
+            case 'highpassFilter':
                 neutralValue = 0;
                 break;
             default:
@@ -1402,21 +1323,11 @@ function getElementBoundingBox(element) {
         });
     } else {
         const size = element.size || 10;
-        if (element.type === 'glissando' || element.type === 'line') {
+        if (element.type === 'line') {
             minX = Math.min(element.x, element.endX);
             minY = Math.min(element.y, element.endY);
             maxX = Math.max(element.x, element.endX);
             maxY = Math.max(element.y, element.endY);
-        } else if (element.type === 'circle') {
-            minX = element.x - element.radius;
-            minY = element.y - element.radius;
-            maxX = element.x + element.radius;
-            maxY = element.y + element.radius;
-        } else if (element.type === 'rectangle') {
-            minX = Math.min(element.x, element.x + element.width);
-            minY = Math.min(element.y, element.y + element.height);
-            maxX = Math.max(element.x, element.x + element.width);
-            maxY = Math.max(element.y, element.y + element.height);
         } else {
              minX = element.x - size / 2;
              minY = element.y - size / 2;
@@ -1510,7 +1421,6 @@ function saveProject() {
         link.href = URL.createObjectURL(blob);
         link.download = `meu-projeto-${Date.now()}.drawmus`;
         link.click();
-        URL.revokeObjectURL(link.href);
     } catch (e) {
         console.error("Erro ao salvar projeto:", e);
         alert("Não foi possível salvar o projeto.");
@@ -1526,8 +1436,8 @@ function importProject(event) {
         try {
             const projectData = JSON.parse(e.target.result);
             if (projectData && Array.isArray(projectData.strokes) && Array.isArray(projectData.symbols)) {
-                projectData.strokes.forEach(s => s.effects = s.effects || []); //
-                projectData.symbols.forEach(s => s.effects = s.effects || []); //
+                projectData.strokes.forEach(s => s.effects = s.effects || []);
+                projectData.symbols.forEach(s => s.effects = s.effects || []);
 
                 state.composition = projectData;
                 state.selectedElements = [];
@@ -1554,8 +1464,8 @@ function loadAutoSavedProject() {
             const savedComposition = JSON.parse(savedJson);
             if (savedComposition && (savedComposition.strokes.length > 0 || savedComposition.symbols.length > 0)) {
                 if (confirm("Encontramos um projeto salvo automaticamente. Deseja carregá-lo?")) {
-                    savedComposition.strokes.forEach(s => s.effects = s.effects || []); //
-                    savedComposition.symbols.forEach(s => s.effects = s.effects || []); //
+                    savedComposition.strokes.forEach(s => s.effects = s.effects || []);
+                    savedComposition.symbols.forEach(s => s.effects = s.effects || []);
                     state.composition = savedComposition;
                 }
             }
@@ -1583,8 +1493,8 @@ function undo() {
     if (state.historyIndex > 0) {
         state.historyIndex--;
         state.composition = JSON.parse(JSON.stringify(state.history[state.historyIndex]));
-        state.composition.strokes.forEach(s => s.effects = s.effects || []); //
-        state.composition.symbols.forEach(s => s.effects = s.effects || []); //
+        state.composition.strokes.forEach(s => s.effects = s.effects || []);
+        state.composition.symbols.forEach(s => s.effects = s.effects || []);
 
         state.selectedElements = [];
         resetEffectSliders();
@@ -1599,8 +1509,8 @@ function redo() {
     if (state.historyIndex < state.history.length - 1) {
         state.historyIndex++;
         state.composition = JSON.parse(JSON.stringify(state.history[state.historyIndex]));
-        state.composition.strokes.forEach(s => s.effects = s.effects || []); //
-        state.composition.symbols.forEach(s => s.effects = s.effects || []); //
+        state.composition.strokes.forEach(s => s.effects = s.effects || []);
+        state.composition.symbols.forEach(s => s.effects = s.effects || []);
 
         state.selectedElements = [];
         resetEffectSliders();
@@ -1639,12 +1549,35 @@ function startPlayback() {
         state.isPlaying = true;
         updatePlaybackUI(true);
 
+        // Aplica os efeitos do equalizador global ao destino do AudioContext
+        const globalGainNode = state.audioCtx.createGain();
+        const bassFilter = state.audioCtx.createBiquadFilter();
+        bassFilter.type = 'lowshelf';
+        bassFilter.frequency.value = 100;
+        bassFilter.gain.value = state.globalEqValues.bassEqGlobal;
+
+        const midFilter = state.audioCtx.createBiquadFilter();
+        midFilter.type = 'peaking';
+        midFilter.frequency.value = 1000;
+        midFilter.Q.value = 1;
+        midFilter.gain.value = state.globalEqValues.midEqGlobal;
+
+        const trebleFilter = state.audioCtx.createBiquadFilter();
+        trebleFilter.type = 'highshelf';
+        trebleFilter.frequency.value = 3000;
+        trebleFilter.gain.value = state.globalEqValues.trebleEqGlobal;
+
+        globalGainNode.connect(bassFilter);
+        bassFilter.connect(midFilter);
+        midFilter.connect(trebleFilter);
+        trebleFilter.connect(state.audioCtx.destination);
+
         const startX = state.playbackStartTime * PIXELS_PER_SECOND * state.zoomLevel;
         if (Math.abs(el.mainCanvasArea.scrollLeft - startX) > el.mainCanvasArea.offsetWidth) {
              el.mainCanvasArea.scrollLeft = startX - 100;
         }
 
-        scheduleAllSounds(state.audioCtx, state.playbackStartTime);
+        scheduleAllSounds(state.audioCtx, state.playbackStartTime, globalGainNode);
         animatePlayhead();
     });
 }
@@ -1653,9 +1586,13 @@ function stopPlayback() {
     state.isPlaying = false;
 
     state.sourceNodes.forEach(node => {
-        try { 
-            if (node instanceof OscillatorNode || node instanceof AudioBufferSourceNode) { //
-                node.stop(0); 
+        try {
+            if (node instanceof OscillatorNode || node instanceof AudioBufferSourceNode) {
+                // Ao invés de parar imediatamente, agenda a parada para permitir o decaimento de efeitos
+                // Ajusta o tempo de parada para ser imediatamente após o som, permitindo ao efeito decair
+                // A lógica de `finalStopTime` dentro de `createTone` já lida com a duração dos efeitos
+                // Se o nó não tiver `stop`, é um nó de efeito que não precisa ser parado explicitamente
+                node.stop(0); // Paramos o oscilador/buffer source na hora
             }
             if (typeof node.disconnect === 'function') {
                 node.disconnect();
@@ -1684,7 +1621,7 @@ function animatePlayhead() {
 
         if (currentPosInSeconds >= MAX_DURATION_SECONDS) {
             stopPlayback();
-            state.playbackStartTime = 0; 
+            state.playbackStartTime = 0;
             updatePlayheadPosition();
             return;
         }
@@ -1704,12 +1641,17 @@ function animatePlayhead() {
     state.animationFrameId = requestAnimationFrame(frame);
 }
 
-function scheduleAllSounds(audioCtx, offsetTime = 0) {
+function scheduleAllSounds(audioCtx, offsetTime = 0, destinationNode) {
     const now = audioCtx.currentTime;
     state.sourceNodes = [];
 
-    const mainOut = audioCtx.createGain();
-    mainOut.connect(audioCtx.destination); 
+    if (destinationNode) {
+        // No need to connect destinationNode to audioCtx.destination here,
+        // it's already handled in startPlayback where the global EQ chain is built.
+    } else {
+        destinationNode = audioCtx.destination;
+    }
+
 
     state.composition.strokes.forEach(stroke => {
         if (stroke.points.length < 2) return;
@@ -1735,9 +1677,8 @@ function scheduleAllSounds(audioCtx, offsetTime = 0) {
             return;
         }
 
-        // CORREÇÃO: Lógica de freqValues para Strokes no scheduleAllSounds
         const freqValues = new Float32Array(Math.ceil(actualDuration * 100));
-        
+
         const startXForGeneration = (actualScheduledStart - now + offsetTime) * PIXELS_PER_SECOND;
 
         let currentPointIndex = 0;
@@ -1766,7 +1707,7 @@ function scheduleAllSounds(audioCtx, offsetTime = 0) {
         }
 
         const vol = 0.1 + (stroke.lineWidth / 50) * 0.4;
-        const pan = xToPan(minX); 
+        const pan = xToPan(minX);
 
         createTone(audioCtx, {
             element: stroke,
@@ -1779,11 +1720,12 @@ function scheduleAllSounds(audioCtx, offsetTime = 0) {
             xStart: minX,
             xEnd: maxX,
             initialY: stroke.points[0].y,
-        }, mainOut);
+        }, destinationNode);
     });
 
     state.composition.symbols.forEach(s => {
         const symbolTime = s.x / PIXELS_PER_SECOND;
+        const symbolDuration = 0.1;
 
         const scheduledTime = now + Math.max(0, symbolTime - offsetTime);
 
@@ -1796,51 +1738,50 @@ function scheduleAllSounds(audioCtx, offsetTime = 0) {
         const freq = yToFrequency(s.y);
 
         switch (s.type) {
-            case 'staccato': createTone(audioCtx, { element: s, type: 'triangle', startTime: scheduledTime, endTime: scheduledTime + 0.08, startFreq: freq, vol, pan, xStart: s.x, initialY: s.y }, mainOut); break;
-            case 'percussion': createTone(audioCtx, { element: s, type: 'noise', startTime: scheduledTime, endTime: scheduledTime + 0.1, vol, pan, xStart: s.x, initialY: s.y }, mainOut); break;
+            case 'staccato': createTone(audioCtx, { element: s, type: 'triangle', startTime: scheduledTime, endTime: scheduledTime + 0.08, startFreq: freq, vol, pan, xStart: s.x, initialY: s.y }, destinationNode); break;
+            case 'percussion': createTone(audioCtx, { element: s, type: 'noise', startTime: scheduledTime, endTime: scheduledTime + 0.1, vol, pan, xStart: s.x, initialY: s.y }, destinationNode); break;
             case 'arpeggio':
                 [1, 5/4, 3/2, 2].forEach((interval, i) => {
                     const noteScheduledTime = now + Math.max(0, (symbolTime + i * 0.05) - offsetTime);
                     if (noteScheduledTime > now + MAX_DURATION_SECONDS) return;
-                    createTone(audioCtx, { element: s, type: 'triangle', startTime: noteScheduledTime, endTime: noteScheduledTime + 0.1, startFreq: freq * interval, vol: vol*0.8, pan, xStart: s.x, initialY: s.y }, mainOut);
+                    createTone(audioCtx, { element: s, type: 'triangle', startTime: noteScheduledTime, endTime: noteScheduledTime + 0.1, startFreq: freq * interval, vol: vol*0.8, pan, xStart: s.x, initialY: s.y }, destinationNode);
                 });
                 break;
-            case 'glissando':
-                const glissStartTimeCanvas = s.x / PIXELS_PER_SECOND;
-                const glissEndTimeCanvas = s.endX / PIXELS_PER_SECOND;
+            case 'line':
+                const lineStartTimeCanvas = s.x / PIXELS_PER_SECOND;
+                const lineEndTimeCanvas = s.endX / PIXELS_PER_SECOND;
 
-                const actualGlissStartTime = Math.max(glissStartTimeCanvas, offsetTime);
-                const actualGlissEndTime = glissEndTimeCanvas;
+                const actualLineStartTime = Math.max(lineStartTimeCanvas, offsetTime);
+                const actualLineEndTime = lineEndTimeCanvas;
 
-                const scheduledGlissStart = now + (actualGlissStartTime - offsetTime);
-                const scheduledGlissEnd = now + (actualGlissEndTime - offsetTime);
-                const glissDuration = scheduledGlissEnd - scheduledGlissStart;
+                const scheduledLineStart = now + (actualLineStartTime - offsetTime);
+                const scheduledLineEnd = now + (actualLineEndTime - offsetTime);
+                const lineDuration = scheduledLineEnd - scheduledLineStart;
 
-                if (glissDuration > 0) {
+                if (lineDuration > 0) {
                     let startFreq = yToFrequency(s.y);
                     let endFreq = yToFrequency(s.endY);
 
-                    // CORREÇÃO: Interpolação de startFreq e endFreq para glissando com offset
-                    const originalGlissTotalDuration = glissEndTimeCanvas - glissStartTimeCanvas;
-                    if (originalGlissTotalDuration > 0) { // Evita divisão por zero
-                        if (offsetTime > glissStartTimeCanvas) {
-                            const progressAtOffset = (offsetTime - glissStartTimeCanvas) / originalGlissTotalDuration;
+                    const originalLineTotalDuration = lineEndTimeCanvas - lineStartTimeCanvas;
+                    if (originalLineTotalDuration > 0) {
+                        if (offsetTime > lineStartTimeCanvas) {
+                            const progressAtOffset = (offsetTime - lineStartTimeCanvas) / originalLineTotalDuration;
                             startFreq = yToFrequency(s.y + (s.endY - s.y) * progressAtOffset);
                         }
-                        if (scheduledGlissEnd > now + MAX_DURATION_SECONDS) {
-                             const progressAtEndLimit = ( (now + MAX_DURATION_SECONDS) - (glissStartTimeCanvas - offsetTime + now) ) / originalGlissTotalDuration;
+                        if (scheduledLineEnd > now + MAX_DURATION_SECONDS) {
+                             const progressAtEndLimit = ( (now + MAX_DURATION_SECONDS) - (lineStartTimeCanvas - offsetTime + now) ) / originalLineTotalDuration;
                              endFreq = yToFrequency(s.y + (s.endY - s.y) * progressAtEndLimit);
                         }
                     }
 
-                    createTone(audioCtx, { element: s, type: s.timbre, startTime: scheduledGlissStart, endTime: scheduledGlissEnd, startFreq: startFreq, endFreq: endFreq, vol, pan, xStart: s.x, xEnd: s.endX, initialY: s.y }, mainOut);
+                    createTone(audioCtx, { element: s, type: s.timbre, startTime: scheduledLineStart, endTime: scheduledLineEnd, startFreq: startFreq, endFreq: endFreq, vol, pan, xStart: s.x, xEnd: s.endX, initialY: s.y }, destinationNode);
                 }
                 break;
-            case 'tremolo': 
+            case 'tremolo':
                 for (let t = 0; t < 0.5; t += 0.05) {
                     const tremoloScheduledTime = now + Math.max(0, (symbolTime + t) - offsetTime);
                     if (tremoloScheduledTime > now + MAX_DURATION_SECONDS) return;
-                    createTone(audioCtx, { element: s, type: 'sine', startTime: tremoloScheduledTime, endTime: tremoloScheduledTime + 0.1, startFreq: freq, vol: vol * 0.8, pan, xStart: s.x, initialY: s.y }, mainOut);
+                    createTone(audioCtx, { element: s, type: 'sine', startTime: tremoloScheduledTime, endTime: tremoloScheduledTime + 0.1, startFreq: freq, vol: vol * 0.8, pan, xStart: s.x, initialY: s.y }, destinationNode);
                 }
                 break;
             case 'granular':
@@ -1848,13 +1789,8 @@ function scheduleAllSounds(audioCtx, offsetTime = 0) {
                      const randomOffset = Math.random() * 0.5;
                      const granularScheduledTime = now + Math.max(0, (symbolTime + randomOffset) - offsetTime);
                      if (granularScheduledTime > now + MAX_DURATION_SECONDS) return;
-                     createTone(audioCtx, { element: s, type: 'sine', startTime: granularScheduledTime, endTime: granularScheduledTime + Math.random() * 0.1 + 0.05, startFreq: yToFrequency(s.y - s.size / 2 + Math.random() * s.size), vol: Math.random() * vol, pan: pan - 0.2 + Math.random() * 0.4, xStart: s.x, initialY: s.y }, mainOut);
+                     createTone(audioCtx, { element: s, type: 'sine', startTime: granularScheduledTime, endTime: granularScheduledTime + Math.random() * 0.1 + 0.05, startFreq: yToFrequency(s.y - s.size / 2 + Math.random() * s.size), vol: Math.random() * vol, pan: pan - 0.2 + Math.random() * 0.4, xStart: s.x, initialY: s.y }, destinationNode);
                 }
-                break;
-            case 'line': 
-            case 'circle': 
-            case 'rectangle': 
-                 createTone(audioCtx, { element: s, type: s.timbre, startTime: scheduledTime, endTime: scheduledTime + 0.1, startFreq: freq, vol, pan, xStart: s.x, initialY: s.y }, mainOut);
                 break;
         }
     });
@@ -1867,15 +1803,13 @@ function createTone(audioCtx, opts, mainOut) {
 
     const sourcesToStop = [];
 
-    // Define a duração extra para efeitos como reverb e delay
-    const extraEffectTailTime = 1.0; // 1 segundo extra para o decaimento dos efeitos
+    // Ajustado para um tempo de decaimento mais longo para efeitos
+    const effectTailTime = 2.0; // 2 segundos extra para o decaimento dos efeitos
     let finalStopTime = opts.endTime;
 
-    // Se o elemento tem efeitos de reverb ou delay, estende o tempo de parada da fonte.
-    // Isso é crucial para que o decaimento do efeito seja ouvido.
     const hasReverbOrDelay = opts.element.effects.some(e => e.type === 'reverbZone' || e.type === 'delayZone');
     if (hasReverbOrDelay) {
-        finalStopTime = opts.endTime + extraEffectTailTime;
+        finalStopTime = opts.endTime + effectTailTime;
     }
 
 
@@ -1893,36 +1827,36 @@ function createTone(audioCtx, opts, mainOut) {
         case 'fm':
             const carrier = audioCtx.createOscillator(); carrier.type = 'sine';
             const modulator = audioCtx.createOscillator(); modulator.type = 'square';
-            
+
             if(opts.freqValues) {
-                modulator.frequency.setValueAtTime( (opts.freqValues.reduce((a, b) => a + b) / opts.freqValues.length) * 1.5 || 300, audioCtx.currentTime); 
+                modulator.frequency.setValueAtTime( (opts.freqValues.reduce((a, b) => a + b) / opts.freqValues.length) * 1.5 || 300, audioCtx.currentTime);
             } else {
                 modulator.frequency.setValueAtTime( (opts.startFreq || 200) * 1.5, audioCtx.currentTime);
             }
 
-            const modGain = audioCtx.createGain(); 
+            const modGain = audioCtx.createGain();
             modGain.gain.setValueAtTime( (opts.startFreq || 200) * 0.75, audioCtx.currentTime);
             modulator.connect(modGain).connect(carrier.frequency);
-            osc = audioCtx.createGain(); carrier.connect(osc); 
-            
+            osc = audioCtx.createGain(); carrier.connect(osc);
+
             sourcesToStop.push(modulator, carrier);
             break;
-        case 'organ': 
-            osc = audioCtx.createGain(); 
+        case 'organ':
+            osc = audioCtx.createGain();
             const fundamental = audioCtx.createOscillator();
             fundamental.type = 'sine';
             if(opts.freqValues) fundamental.frequency.setValueCurveAtTime(opts.freqValues, opts.startTime, duration);
             else fundamental.frequency.setValueAtTime(opts.startFreq || 440, opts.startTime);
             fundamental.connect(osc);
-            
-            const harmonic1 = audioCtx.createOscillator(); 
+
+            const harmonic1 = audioCtx.createOscillator();
             harmonic1.type = 'sine';
             if(opts.freqValues) harmonic1.frequency.setValueCurveAtTime(opts.freqValues.map(f => f * 2), opts.startTime, duration);
             else harmonic1.frequency.setValueAtTime((opts.startFreq || 440) * 2, opts.startTime);
             const gain1 = audioCtx.createGain(); gain1.gain.value = 0.5;
             harmonic1.connect(gain1).connect(osc);
 
-            const harmonic2 = audioCtx.createOscillator(); 
+            const harmonic2 = audioCtx.createOscillator();
             harmonic2.type = 'sine';
             if(opts.freqValues) harmonic2.frequency.setValueCurveAtTime(opts.freqValues.map(f => f * 1.5), opts.startTime, duration);
             else harmonic2.frequency.setValueAtTime((opts.startFreq || 440) * 1.5, opts.startTime);
@@ -1940,7 +1874,7 @@ function createTone(audioCtx, opts, mainOut) {
         case 'square':
         case 'sawtooth':
         case 'triangle':
-        default: 
+        default:
             osc = audioCtx.createOscillator();
             osc.type = opts.type;
             sourcesToStop.push(osc);
@@ -1956,16 +1890,15 @@ function createTone(audioCtx, opts, mainOut) {
         }
     }
 
-    const mainGain = audioCtx.createGain(); 
-    // CORREÇÃO: Envelope de ganho ajustado para sustentar o som
+    const mainGain = audioCtx.createGain();
     const attackTime = 0.01;
-    const releaseTime = 0.05; // Ajuste este valor se o som ainda decair muito rápido
+    const releaseTime = 0.1;
 
     mainGain.gain.setValueAtTime(0.0001, opts.startTime);
     mainGain.gain.exponentialRampToValueAtTime(opts.vol, opts.startTime + attackTime);
-    // Mantém o volume constante até o início do release
-    mainGain.gain.setValueAtTime(opts.vol, opts.endTime - releaseTime);
-    mainGain.gain.exponentialRampToValueAtTime(0.0001, opts.endTime);
+    mainGain.gain.setValueAtTime(opts.vol, opts.endTime);
+    mainGain.gain.exponentialRampToValueAtTime(0.0001, opts.endTime + releaseTime);
+
 
     if (opts.type !== 'fm' && opts.type !== 'organ' && typeof osc.connect === 'function') {
         osc.connect(mainGain);
@@ -1979,9 +1912,10 @@ function createTone(audioCtx, opts, mainOut) {
 
     if (opts.element && opts.element.effects && opts.element.effects.length > 0) {
         const effectOrder = [
-            'lowpassFilter', 'highpassFilter', 'bandpassFilter', 'notchFilter', 'bassEq', 'midEq', 'trebleEq',
+            'lowpassFilter', 'highpassFilter', 'bandpassFilter', 'notchFilter',
             'phaser', 'flanger', 'chorus', 'vibratoZone', 'tremoloAmplitude', 'wah',
-            'distortion', 'compressor',
+            'distortion', 'compressor'
+            // Reverb e Delay são tratados separadamente no final, em paralelo, e terão um decaimento natural.
         ];
 
         const orderedEffects = effectOrder
@@ -1997,22 +1931,10 @@ function createTone(audioCtx, opts, mainOut) {
                 case 'highpassFilter':
                 case 'bandpassFilter':
                 case 'notchFilter':
-                case 'bassEq':
-                case 'midEq':
-                case 'trebleEq':
                     effectNode = audioCtx.createBiquadFilter();
-                    effectNode.type = effect.type === 'bassEq' ? 'lowshelf' : 
-                                      effect.type === 'midEq' ? 'peaking' :
-                                      effect.type === 'trebleEq' ? 'highshelf' : effect.type.replace('Filter', '');
+                    effectNode.type = effect.type.replace('Filter', '');
                     effectNode.frequency.value = params.frequency || ((FREQ_MIN + FREQ_MAX) / 2);
                     if (typeof params.Q !== 'undefined') effectNode.Q.value = params.Q;
-                    if (typeof params.gain !== 'undefined') effectNode.gain.value = params.gain;
-                    currentNode.connect(effectNode);
-                    currentNode = effectNode;
-                    break;
-                case 'gain':
-                    effectNode = audioCtx.createGain();
-                    effectNode.gain.value = params.gain || 1.0;
                     currentNode.connect(effectNode);
                     currentNode = effectNode;
                     break;
@@ -2020,78 +1942,95 @@ function createTone(audioCtx, opts, mainOut) {
                     if (osc instanceof OscillatorNode) {
                         const vibratoLFO = audioCtx.createOscillator();
                         vibratoLFO.type = 'sine';
-                        vibratoLFO.frequency.value = params.rate || 5; 
+                        vibratoLFO.frequency.value = params.rate || 5;
                         const vibratoGain = audioCtx.createGain();
-                        vibratoGain.gain.value = params.depth || 50; 
+                        vibratoGain.gain.value = params.depth || 50;
                         vibratoLFO.connect(vibratoGain).connect(osc.frequency);
                         sourcesToStop.push(vibratoLFO);
                     }
                     break;
-                case 'phaser': 
-                    effectNode = audioCtx.createBiquadFilter(); 
+                case 'phaser':
+                    effectNode = audioCtx.createBiquadFilter();
                     effectNode.type = 'allpass';
+                    effectNode.frequency.value = params.depth || 1000;
                     const phaserLFO = audioCtx.createOscillator();
                     phaserLFO.type = 'sine';
                     phaserLFO.frequency.value = params.rate || 0.5;
-                    const phaserGain = audioCtx.createGain();
-                    phaserGain.gain.value = params.depth || 1000;
-                    phaserLFO.connect(phaserGain).connect(effectNode.frequency);
+                    const phaserLFOGain = audioCtx.createGain();
+                    phaserLFOGain.gain.value = (params.depth || 1000) * 0.5;
+                    phaserLFO.connect(phaserLFOGain);
+                    phaserLFOGain.connect(effectNode.detune);
                     currentNode.connect(effectNode);
                     currentNode = effectNode;
                     sourcesToStop.push(phaserLFO);
                     break;
-                case 'flanger': 
-                    effectNode = audioCtx.createDelay(0.05);
-                    const flangerLFO = audioCtx.createOscillator();
-                    flangerLFO.type = 'sine';
-                    flangerLFO.frequency.value = params.rate || 0.2;
-                    const flangerLFO_Gain = audioCtx.createGain();
-                    flangerLFO_Gain.gain.value = params.delay || 0.005;
-                    flangerLFO.connect(flangerLFO_Gain).connect(effectNode.delayTime);
+                case 'flanger':
+                    const delayNodeFlanger = audioCtx.createDelay(0.02);
+                    const lfoFlanger = audioCtx.createOscillator();
+                    lfoFlanger.type = 'sine';
+                    lfoFlanger.frequency.value = params.rate || 0.2;
+                    const lfoFlangerGain = audioCtx.createGain();
+                    lfoFlangerGain.gain.value = params.delay || 0.005;
+                    lfoFlanger.connect(lfoFlangerGain).connect(delayNodeFlanger.delayTime);
 
-                    const flangerFeedback = audioCtx.createGain();
-                    flangerFeedback.gain.value = params.feedback || 0.8;
+                    const feedbackFlanger = audioCtx.createGain();
+                    feedbackFlanger.gain.value = params.feedback || 0.5;
 
-                    const flangerDry = audioCtx.createGain();
-                    flangerDry.gain.value = 1 - (params.mix || 0.5);
-                    currentNode.connect(flangerDry).connect(currentNode);
+                    const wetGainFlanger = audioCtx.createGain();
+                    wetGainFlanger.gain.value = params.mix || 0.5;
+                    const dryGainFlanger = audioCtx.createGain();
+                    dryGainFlanger.gain.value = 1 - (params.mix || 0.5);
 
-                    const flangerWet = audioCtx.createGain();
-                    flangerWet.gain.value = params.mix || 0.5;
-                    currentNode.connect(effectNode).connect(flangerFeedback).connect(effectNode);
-                    effectNode.connect(flangerWet).connect(currentNode);
+                    currentNode.connect(dryGainFlanger);
+                    currentNode.connect(delayNodeFlanger);
+                    delayNodeFlanger.connect(feedbackFlanger).connect(delayNodeFlanger);
+                    delayNodeFlanger.connect(wetGainFlanger);
 
-                    sourcesToStop.push(flangerLFO);
+                    const mergeNodeFlanger = audioCtx.createGain();
+                    dryGainFlanger.connect(mergeNodeFlanger);
+                    wetGainFlanger.connect(mergeNodeFlanger);
+
+                    currentNode = mergeNodeFlanger;
+                    sourcesToStop.push(lfoFlanger);
                     break;
-                case 'chorus': 
-                    const chorusDelay1 = audioCtx.createDelay(0.1);
-                    const chorusDelay2 = audioCtx.createDelay(0.1);
+                case 'chorus':
+                    const delayNodeChorus1 = audioCtx.createDelay(params.delay || 0.025);
+                    const lfoChorus1 = audioCtx.createOscillator();
+                    lfoChorus1.type = 'sine';
+                    lfoChorus1.frequency.value = params.rate || 0.3;
+                    const lfoChorusGain1 = audioCtx.createGain();
+                    lfoChorusGain1.gain.value = (params.delay || 0.025) * 0.5;
+                    lfoChorus1.connect(lfoChorusGain1).connect(delayNodeChorus1.delayTime);
 
-                    const chorusLFO1 = audioCtx.createOscillator();
-                    chorusLFO1.type = 'sine';
-                    chorusLFO1.frequency.value = params.rate || 0.1;
-                    const chorusLFO1_Gain = audioCtx.createGain();
-                    chorusLFO1_Gain.gain.value = params.delay || 0.02;
-                    chorusLFO1.connect(chorusLFO1_Gain).connect(chorusDelay1.delayTime);
+                    const wetGainChorus1 = audioCtx.createGain();
+                    wetGainChorus1.gain.value = (params.mix || 0.5) / 2;
 
-                    const chorusLFO2 = audioCtx.createOscillator();
-                    chorusLFO2.type = 'sine';
-                    chorusLFO2.frequency.value = (params.rate || 0.1) * 1.2;
-                    const chorusLFO2_Gain = audioCtx.createGain();
-                    chorusLFO2_Gain.gain.value = (params.delay || 0.02) * 0.8;
-                    chorusLFO2.connect(chorusLFO2_Gain).connect(chorusDelay2.delayTime);
+                    currentNode.connect(delayNodeChorus1).connect(wetGainChorus1);
 
-                    const chorusDry = audioCtx.createGain();
-                    chorusDry.gain.value = 1 - (params.mix || 0.5);
-                    currentNode.connect(chorusDry).connect(currentNode);
+                    const delayNodeChorus2 = audioCtx.createDelay(params.delay * 1.5 || 0.0375);
+                    const lfoChorus2 = audioCtx.createOscillator();
+                    lfoChorus2.type = 'sine';
+                    lfoChorus2.frequency.value = (params.rate || 0.3) * 0.8;
+                    const lfoChorusGain2 = audioCtx.createGain();
+                    lfoChorusGain2.gain.value = (params.delay || 0.025) * 0.4;
+                    lfoChorus2.connect(lfoChorusGain2).connect(delayNodeChorus2.delayTime);
 
-                    const chorusWet1 = audioCtx.createGain(); chorusWet1.gain.value = (params.mix || 0.5) / 2;
-                    const chorusWet2 = audioCtx.createGain(); chorusWet2.gain.value = (params.mix || 0.5) / 2;
+                    const wetGainChorus2 = audioCtx.createGain();
+                    wetGainChorus2.gain.value = (params.mix || 0.5) / 2;
 
-                    currentNode.connect(chorusDelay1).connect(chorusWet1).connect(currentNode);
-                    currentNode.connect(chorusDelay2).connect(chorusWet2).connect(currentNode);
+                    currentNode.connect(delayNodeChorus2).connect(wetGainChorus2);
 
-                    sourcesToStop.push(chorusLFO1, chorusLFO2);
+                    const dryGainChorus = audioCtx.createGain();
+                    dryGainChorus.gain.value = 1 - (params.mix || 0.5);
+                    currentNode.connect(dryGainChorus);
+
+                    const mergeNodeChorus = audioCtx.createGain();
+                    dryGainChorus.connect(mergeNodeChorus);
+                    wetGainChorus1.connect(mergeNodeChorus);
+                    wetGainChorus2.connect(mergeNodeChorus);
+
+                    currentNode = mergeNodeChorus;
+                    sourcesToStop.push(lfoChorus1, lfoChorus2);
                     break;
                 case 'distortion':
                     effectNode = audioCtx.createWaveShaper();
@@ -2111,14 +2050,14 @@ function createTone(audioCtx, opts, mainOut) {
                     currentNode = effectNode;
                     break;
                 case 'tremoloAmplitude':
-                    effectNode = audioCtx.createGain(); 
+                    effectNode = audioCtx.createGain();
                     const tremoloAmpLFO = audioCtx.createOscillator();
                     tremoloAmpLFO.type = 'sine';
-                    tremoloAmpLFO.frequency.value = params.rate || 8; 
+                    tremoloAmpLFO.frequency.value = params.rate || 8;
                     const tremoloAmpGainNode = audioCtx.createGain();
-                    tremoloAmpGainNode.gain.value = params.depth || 0.5; 
+                    tremoloAmpGainNode.gain.value = params.depth || 0.5;
                     tremoloAmpLFO.connect(tremoloAmpGainNode);
-                    tremoloAmpGainNode.connect(effectNode.gain); 
+                    tremoloAmpGainNode.connect(effectNode.gain);
                     currentNode.connect(effectNode);
                     currentNode = effectNode;
                     sourcesToStop.push(tremoloAmpLFO);
@@ -2126,14 +2065,14 @@ function createTone(audioCtx, opts, mainOut) {
                 case 'wah':
                     effectNode = audioCtx.createBiquadFilter();
                     effectNode.type = 'bandpass';
-                    effectNode.Q.value = params.q || 10; 
+                    effectNode.Q.value = params.q || 10;
                     const wahLFO = audioCtx.createOscillator();
                     wahLFO.type = 'sine';
-                    wahLFO.frequency.value = params.rate || 2; 
+                    wahLFO.frequency.value = params.rate || 2;
                     const wahGain = audioCtx.createGain();
-                    wahGain.gain.value = params.range || 2000; 
-                    wahLFO.connect(wahGain).connect(effectNode.frequency); 
-                    effectNode.frequency.value = params.baseFreq || 500; 
+                    wahGain.gain.value = params.range || 2000;
+                    wahLFO.connect(wahGain).connect(effectNode.frequency);
+                    effectNode.frequency.value = params.baseFreq || 500;
                     currentNode.connect(effectNode);
                     currentNode = effectNode;
                     sourcesToStop.push(wahLFO);
@@ -2141,20 +2080,24 @@ function createTone(audioCtx, opts, mainOut) {
             }
         });
 
-        // TRATAMENTO FINAL DE REVERB E DELAY (CONEXÕES EM PARALELO)
+        // Reverb e Delay são mixados em paralelo no final da cadeia
         const delayEffect = opts.element.effects.find(eff => eff.type === 'delayZone');
         if (delayEffect && delayEffect.params.mix > 0) {
             const delayNode = audioCtx.createDelay(1.0);
             const feedbackNode = audioCtx.createGain();
             const wetGainDelay = audioCtx.createGain();
-            
+
             delayNode.delayTime.value = delayEffect.params.time || 0.25;
             feedbackNode.gain.value = delayEffect.params.feedback || 0.3;
             wetGainDelay.gain.value = delayEffect.params.mix || 0.5;
 
-            currentNode.connect(delayNode); 
+            currentNode.connect(delayNode);
             delayNode.connect(feedbackNode).connect(delayNode);
-            delayNode.connect(wetGainDelay).connect(currentNode);
+            delayNode.connect(wetGainDelay); // Conecta o wet mix ao nó de saída principal
+
+            // O wetGainDelay precisa ser conectado ao `mainOut` para que o decaimento seja ouvido
+            // sem ser cortado pelo `mainGain` do som original.
+            wetGainDelay.connect(mainOut);
         }
 
         const reverbEffect = opts.element.effects.find(eff => eff.type === 'reverbZone');
@@ -2164,11 +2107,15 @@ function createTone(audioCtx, opts, mainOut) {
             const reverbWetGain = audioCtx.createGain();
             reverbWetGain.gain.value = reverbEffect.params.mix || 0.3;
 
-            currentNode.connect(reverbNode); 
-            reverbNode.connect(reverbWetGain).connect(currentNode);
+            currentNode.connect(reverbNode);
+            reverbNode.connect(reverbWetGain); // Conecta o wet mix ao nó de saída principal
+
+            // O reverbWetGain precisa ser conectado ao `mainOut` para que o decaimento seja ouvido
+            // sem ser cortado pelo `mainGain` do som original.
+            reverbWetGain.connect(mainOut);
         }
     }
-    
+
     const panner = audioCtx.createStereoPanner();
     panner.pan.setValueAtTime(opts.pan, opts.startTime);
     currentNode.connect(panner);
@@ -2177,9 +2124,8 @@ function createTone(audioCtx, opts, mainOut) {
 
     sourcesToStop.forEach(node => {
         if (typeof node.start === 'function' && typeof node.stop === 'function') {
-            // CORREÇÃO: Usa finalStopTime para a parada dos nós de fonte
             node.start(opts.startTime);
-            node.stop(finalStopTime);
+            node.stop(finalStopTime); // Usa finalStopTime para a parada dos nós de fonte
         }
         state.sourceNodes.push(node);
     });
@@ -2240,8 +2186,8 @@ function yFromFrequency(freq) {
     return el.canvas.height * (1 - normalizedFreq);
 }
 
-function xToPan(x) { 
-    return (x / el.canvas.width) * 2 - 1; 
+function xToPan(x) {
+    return (x / el.canvas.width) * 2 - 1;
 }
 
 function createImpulseResponse(ac, duration = 1.5, decay = 2.0) {
@@ -2258,22 +2204,19 @@ function createImpulseResponse(ac, duration = 1.5, decay = 2.0) {
 
 function setActiveTool(toolName) {
     state.activeTool = toolName;
-    state.glissandoStart = null;
-    state.lineStart = null; 
-    state.circleCenter = null; 
-    state.rectangleStart = null; 
-    
+    state.lineStart = null;
+
     Object.values(el.tools).forEach(btn => btn?.classList.remove('active'));
 
     if (el.tools[toolName]) {
         el.tools[toolName].classList.add('active');
     }
 
-    let cursor = 'auto'; 
+    let cursor = 'auto';
     if (toolName === 'select') cursor = 'pointer';
     else if (toolName === 'hand') cursor = 'grab';
     else if (toolName === 'eraser') cursor = `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="rgba(255,255,255,0.5)" stroke="black" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="2,2"/></svg>') 12 12, auto`;
-    else if (['glissando', 'line', 'circle', 'rectangle', 'pencil', 'staccato', 'percussion', 'arpeggio', 'granular', 'tremolo'].includes(toolName)) cursor = 'crosshair';
+    else if (['line', 'pencil', 'staccato', 'percussion', 'arpeggio', 'granular', 'tremolo'].includes(toolName)) cursor = 'crosshair';
 
     el.canvas.style.cursor = cursor;
 }
@@ -2296,9 +2239,9 @@ function applyTheme(theme) {
 
 function handleExportDrag(e) {
     if (!state.isDraggingStart && !state.isDraggingEnd) return;
-    
+
     if (e.touches) e.preventDefault();
-    
+
     const rect = el.xRulerContainer.getBoundingClientRect();
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const xPosOnRuler = clientX - rect.left;
@@ -2368,7 +2311,7 @@ function exportPdf() {
         const tempCtx = tempCanvas.getContext('2d');
         tempCtx.fillStyle = getComputedStyle(d.documentElement).getPropertyValue('--bg-dark').trim();
         tempCtx.fillRect(0, 0, tempCanvas.width, tempCtx.height);
-        
+
         tempCtx.save();
         state.composition.strokes.forEach(stroke => {
             if (stroke.points.length < 2) return;
@@ -2407,11 +2350,32 @@ async function exportWav() {
     const duration = exportEndTime - exportStartTime;
     const offlineCtx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(2, 44100 * duration, 44100);
 
+    // Aplica os efeitos do equalizador global ao destino do OfflineAudioContext
+    const globalGainNode = offlineCtx.createGain();
+    const bassFilter = offlineCtx.createBiquadFilter();
+    bassFilter.type = 'lowshelf';
+    bassFilter.frequency.value = 100;
+    bassFilter.gain.value = state.globalEqValues.bassEqGlobal;
+
+    const midFilter = offlineCtx.createBiquadFilter();
+    midFilter.type = 'peaking';
+    midFilter.frequency.value = 1000;
+    midFilter.Q.value = 1;
+    midFilter.gain.value = state.globalEqValues.midEqGlobal;
+
+    const trebleFilter = offlineCtx.createBiquadFilter();
+    trebleFilter.type = 'highshelf';
+    trebleFilter.frequency.value = 3000;
+    trebleFilter.gain.value = state.globalEqValues.trebleEqGlobal;
+
+    globalGainNode.connect(bassFilter);
+    bassFilter.connect(midFilter);
+    midFilter.connect(trebleFilter);
+    trebleFilter.connect(offlineCtx.destination);
+
+
     const scheduleForExport = (audioCtx) => {
         const now = 0;
-
-        const mainOut = audioCtx.createGain();
-        mainOut.connect(audioCtx.destination);
 
         state.composition.strokes.forEach(stroke => {
             if (stroke.points.length < 2) return;
@@ -2431,9 +2395,8 @@ async function exportWav() {
             const scheduledStartTime = effectiveStartCanvas - exportStartTime;
             const effectiveDuration = effectiveEndCanvas - effectiveStartCanvas;
 
-            // CORREÇÃO: Recálculo de freqValues para exportação
             const freqValues = new Float32Array(Math.ceil(effectiveDuration * 100));
-            
+
             const startXForGeneration = effectiveStartCanvas * PIXELS_PER_SECOND;
 
             let currentPointIndex = 0;
@@ -2462,7 +2425,7 @@ async function exportWav() {
             }
 
             const vol = 0.1 + (stroke.lineWidth / 50) * 0.4;
-            const pan = xToPan(minX); 
+            const pan = xToPan(minX);
 
             createTone(audioCtx, {
                 element: stroke,
@@ -2472,10 +2435,10 @@ async function exportWav() {
                 freqValues: freqValues,
                 vol: vol,
                 pan: pan,
-                xStart: minX, 
+                xStart: minX,
                 xEnd: maxX,
                 initialY: stroke.points[0].y
-            }, mainOut);
+            }, globalGainNode);
         });
 
         state.composition.symbols.forEach(s => {
@@ -2493,16 +2456,16 @@ async function exportWav() {
             let freq = yToFrequency(s.y);
 
             switch (s.type) {
-                case 'staccato': createTone(offlineCtx, { element: s, type: 'triangle', startTime: scheduledTime, endTime: scheduledTime + 0.08, startFreq: freq, vol, pan, xStart: s.x, initialY: s.y }, mainOut); break;
-                case 'percussion': createTone(offlineCtx, { element: s, type: 'noise', startTime: scheduledTime, endTime: scheduledTime + 0.1, vol, pan, xStart: s.x, initialY: s.y }, mainOut); break;
+                case 'staccato': createTone(offlineCtx, { element: s, type: 'triangle', startTime: scheduledTime, endTime: scheduledTime + 0.08, startFreq: freq, vol, pan, xStart: s.x, initialY: s.y }, globalGainNode); break;
+                case 'percussion': createTone(offlineCtx, { element: s, type: 'noise', startTime: scheduledTime, endTime: scheduledTime + 0.1, vol, pan, xStart: s.x, initialY: s.y }, globalGainNode); break;
                 case 'arpeggio':
                     [1, 5/4, 3/2, 2].forEach((interval, i) => {
                         const noteScheduledTime = now + (symbolTimeCanvas + i * 0.05 - exportStartTime);
                         if (noteScheduledTime < now || noteScheduledTime > now + duration) return;
-                        createTone(offlineCtx, { element: s, type: 'triangle', startTime: noteScheduledTime, endTime: noteScheduledTime + 0.1, startFreq: freq * interval, vol: vol*0.8, pan, xStart: s.x, initialY: s.y }, mainOut);
+                        createTone(offlineCtx, { element: s, type: 'triangle', startTime: noteScheduledTime, endTime: noteScheduledTime + 0.1, startFreq: freq * interval, vol: vol*0.8, pan, xStart: s.x, initialY: s.y }, globalGainNode);
                     });
                     break;
-                case 'glissando':
+                case 'line':
                     const glissStartTimeCanvas = s.x / PIXELS_PER_SECOND;
                     const glissEndTimeCanvas = s.endX / PIXELS_PER_SECOND;
 
@@ -2513,11 +2476,10 @@ async function exportWav() {
 
                     const scheduledGlissStart = now + (effectiveGlissStartCanvas - exportStartTime);
                     const glissDuration = effectiveGlissEndCanvas - effectiveGlissStartCanvas;
-                    
+
                     let startFreq = yToFrequency(s.y);
                     let endFreq = yToFrequency(s.endY);
 
-                    // CORREÇÃO: Interpolação de frequências de glissando na exportação
                     const originalGlissTotalDuration = glissEndTimeCanvas - glissStartTimeCanvas;
                     if (originalGlissTotalDuration > 0) {
                         if (effectiveGlissStartCanvas > glissStartTimeCanvas) {
@@ -2530,13 +2492,13 @@ async function exportWav() {
                         }
                     }
 
-                    createTone(offlineCtx, { element: s, type: s.timbre, startTime: scheduledGlissStart, endTime: scheduledGlissStart + glissDuration, startFreq: startFreq, endFreq: endFreq, vol, pan, xStart: s.x, xEnd: s.endX, initialY: s.y }, mainOut);
+                    createTone(offlineCtx, { element: s, type: s.timbre, startTime: scheduledGlissStart, endTime: scheduledGlissStart + glissDuration, startFreq: startFreq, endFreq: endFreq, vol, pan, xStart: s.x, xEnd: s.endX, initialY: s.y }, globalGainNode);
                     break;
                 case 'tremolo':
                     for (let t = 0; t < 0.5; t += 0.05) {
                         const tremoloScheduledTime = now + (symbolTimeCanvas + t - exportStartTime);
                         if (tremoloScheduledTime < now || tremoloScheduledTime > now + duration) return;
-                        createTone(offlineCtx, { element: s, type: 'sine', startTime: tremoloScheduledTime, endTime: tremoloScheduledTime + 0.1, startFreq: freq, vol: vol * 0.8, pan, xStart: s.x, initialY: s.y }, mainOut);
+                        createTone(offlineCtx, { element: s, type: 'sine', startTime: tremoloScheduledTime, endTime: tremoloScheduledTime + 0.1, startFreq: freq, vol: vol * 0.8, pan, xStart: s.x, initialY: s.y }, globalGainNode);
                     }
                     break;
                 case 'granular':
@@ -2544,13 +2506,8 @@ async function exportWav() {
                          const randomOffset = Math.random() * 0.5;
                          const granularScheduledTime = now + (symbolTimeCanvas + randomOffset - exportStartTime);
                          if (granularScheduledTime < now || granularScheduledTime > now + duration) return;
-                         createTone(offlineCtx, { element: s, type: 'sine', startTime: granularScheduledTime, endTime: granularScheduledTime + Math.random() * 0.1 + 0.05, startFreq: yToFrequency(s.y - s.size / 2 + Math.random() * s.size), vol: Math.random() * vol, pan: pan - 0.2 + Math.random() * 0.4, xStart: s.x, initialY: s.y }, mainOut);
+                         createTone(offlineCtx, { element: s, type: 'sine', startTime: granularScheduledTime, endTime: granularScheduledTime + Math.random() * 0.1 + 0.05, startFreq: yToFrequency(s.y - s.size / 2 + Math.random() * s.size), vol: Math.random() * vol, pan: pan - 0.2 + Math.random() * 0.4, xStart: s.x, initialY: s.y }, globalGainNode);
                     }
-                    break;
-                case 'line': 
-                case 'circle': 
-                case 'rectangle': 
-                     createTone(offlineCtx, { element: s, type: s.timbre, startTime: scheduledTime, endTime: scheduledTime + 0.1, startFreq: freq, vol, pan, xStart: s.x, initialY: s.y }, mainOut);
                     break;
             }
         });
@@ -2567,7 +2524,6 @@ async function exportWav() {
         link.href = URL.createObjectURL(blob);
         link.download = `minha-musica-${Date.now()}.wav`;
         link.click();
-        URL.revokeObjectURL(link.href);
     } catch (e) {
         console.error('Erro ao renderizar o WAV:', e);
         alert('Ocorreu um erro ao exportar o áudio.');
