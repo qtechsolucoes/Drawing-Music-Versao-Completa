@@ -11,7 +11,7 @@ const AUTOSAVE_KEY = 'music-drawing-autosave';
 const ZOOM_MIN = 0.25;
 const ZOOM_MAX = 4.0;
 const ZOOM_STEP = 0.1;
-const DEFAULT_EFFECT_INTENSITY = 50; // Intensidade padrão para efeitos aplicados à seleção
+// DEFAULT_EFFECT_INTENSITY removido pois a intensidade é por slider de efeito
 
 // --- DOM ELEMENTS ---
 const el = {
@@ -19,9 +19,7 @@ const el = {
     resetViewBtn: d.getElementById('resetViewBtn'),
     playhead: d.getElementById('playhead'), colorPicker: d.getElementById('colorPicker'), lineWidth: d.getElementById('lineWidth'),
     clearBtn: d.getElementById('clearBtn'),
-    reverbSlider: d.getElementById('reverb'), // Reverb Global (manter por enquanto, mas não será usado nos elementos)
-    delayTimeSlider: d.getElementById('delayTime'), // Delay Global (manter por enquanto, mas não será usado nos elementos)
-    delayFeedbackSlider: d.getElementById('delayFeedback'), // Delay Global Feedback (manter por enquanto, mas não será usado nos elementos)
+    // Reverb Global, Delay Global e Delay Global Feedback removidos pois não são usados na implementação atual
     themeToggle: d.getElementById('theme-toggle'),
     themeSun: d.getElementById('theme-icon-sun'), themeMoon: d.getElementById('theme-icon-moon'),
     loadingOverlay: d.getElementById('loading-overlay'),
@@ -48,14 +46,13 @@ const el = {
     exportStartHandle: d.getElementById('export-start-handle'),
     exportEndHandle: d.getElementById('export-end-handle'),
 
-    effectIntensitySlider: d.getElementById('effectRange'), 
+    // effectIntensitySlider removido
 
     // Ferramentas de Desenho e Interação
     tools: { 
         select: d.getElementById('select'), pencil: d.getElementById('pencil'), eraser: d.getElementById('eraser'), hand: d.getElementById('hand'), 
         glissando: d.getElementById('glissando'), staccato: d.getElementById('staccato'), percussion: d.getElementById('percussion'), 
         arpeggio: d.getElementById('arpeggio'), granular: d.getElementById('granular'), tremolo: d.getElementById('tremolo'),
-        // Novas ferramentas de desenho
         line: d.getElementById('line'), circle: d.getElementById('circle'), rectangle: d.getElementById('rectangle')
     },
     // Controles de Efeitos no Desenho (agora sliders, sem `effectTools` como botões diretos)
@@ -69,14 +66,12 @@ const el = {
         distortionEffect: d.getElementById('distortionEffect'), compressorEffect: d.getElementById('compressorEffect'),
         gainEffect: d.getElementById('gainEffect'), tremoloAmplitudeEffect: d.getElementById('tremoloAmplitudeEffect'), 
         wahEffect: d.getElementById('wahEffect'),
-        // Knobs de EQ
         bassEq: d.getElementById('bassEq'), midEq: d.getElementById('midEq'), trebleEq: d.getElementById('trebleEq')
     },
     timbres: { 
         sine: d.getElementById('sine'), square: d.getElementById('square'), sawtooth: d.getElementById('sawtooth'), 
         triangle: d.getElementById('triangle'), fm: d.getElementById('fm'), pulse: d.getElementById('pulse'),
         organ: d.getElementById('organ'), noise: d.getElementById('noise'),
-        // pluck, am, pwm removidos
     }
 };
 
@@ -91,25 +86,25 @@ let state = {
     isMoving: false,
     selectionStart: null,
     selectionEnd: null,
-    activeTool: 'pencil', // A ferramenta ativa é sempre de desenho/interação
+    activeTool: 'pencil',
     activeTimbre: 'sine',
     lastPos: { x: 0, y: 0 },
     glissandoStart: null,
-    lineStart: null, // Novo: ponto de início para linha
-    circleCenter: null, // Novo: centro para círculo
-    rectangleStart: null, // Novo: ponto de início para retângulo
+    lineStart: null,
+    circleCenter: null,
+    rectangleStart: null,
     isPlaying: false,
     playbackStartTime: 0,
     animationFrameId: null,
     audioCtx: null,
-    sourceNodes: [], // Para rastrear os nós de áudio e poder pará-los
+    sourceNodes: [], // Para rastrear os nós de áudio e poder pará-los (APENAS fontes)
     composition: { 
         strokes: [], 
         symbols: [] 
     },
     history: [],
     historyIndex: -1,
-    selectedElements: [], // Armazena IDs dos elementos selecionados
+    selectedElements: [],
     zoomLevel: 1.0,
 
     exportStartTime: 0,
@@ -118,8 +113,8 @@ let state = {
     isDraggingEnd: false,
     isDraggingPlayhead: false,
 
-    effectIntensity: DEFAULT_EFFECT_INTENSITY, // Intensidade para efeitos aplicados via seleção (0-100)
-    currentEffectValues: {} // Armazena os valores atuais dos sliders de efeito
+    // effectIntensity removido
+    currentEffectValues: {}
 };
 let clipboard = [];
 
@@ -145,9 +140,7 @@ function initApp(mode = 'pc') {
     setActiveTool('pencil');
     setActiveTimbre('sine');
 
-    // Inicializa e zera os sliders de efeito
     resetEffectSliders();
-    // Preenche o currentEffectValues com os valores neutros/iniciais
     Object.keys(el.effectSliders).forEach(key => {
         state.currentEffectValues[key] = parseFloat(el.effectSliders[key].value);
     });
@@ -184,24 +177,21 @@ function resizeAndRedraw() {
 }
 
 function redrawAll() {
-    ctx.clearRect(0, 0, el.canvas.width / state.zoomLevel, el.canvas.height / state.zoomLevel);
+    ctx.clearRect(0, 0, el.canvas.width, el.canvas.height); //
 
     ctx.save();
     ctx.scale(state.zoomLevel, state.zoomLevel);
 
-    // Desenha todos os elementos (traços e símbolos)
-    // A ordem de desenho pode ser importante para sobreposição
     state.composition.strokes.forEach(stroke => {
         if (stroke.points.length < 2) return;
-        drawElementWithEffects(stroke); // Usa a função que aplica efeitos visuais
+        drawElementWithEffects(stroke);
     });
-    state.composition.symbols.forEach(s => drawElementWithEffects(s)); // Usa a função que aplica efeitos visuais
+    state.composition.symbols.forEach(s => drawElementWithEffects(s));
 
     if (state.isSelecting) {
         drawMarquee();
     }
 
-    // Desenhar indicadores de seleção para elementos selecionados
     state.selectedElements.forEach(elementId => {
         const element = findElementById(elementId);
         if (element) {
@@ -345,15 +335,18 @@ function setupEventListeners() {
     el.clearBtn.addEventListener('click', handleClear);
     el.themeToggle.addEventListener('click', () => applyTheme(d.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'));
 
-    // Listeners para Ferramentas de Desenho/Interação
     Object.keys(el.tools).forEach(key => el.tools[key]?.addEventListener('click', () => setActiveTool(key)));
-    // Listeners para Sliders de Efeito - Cada um vai chamar applyEffectToSelectedElements
+    
+    // Listeners para Sliders de Efeito
     Object.keys(el.effectSliders).forEach(key => {
         const slider = el.effectSliders[key];
-        // Pega o tipo do efeito do data-attribute ou ID (ex: reverbEffect -> reverbZone)
-        const effectType = slider.dataset.effectType || key.replace('Effect', '');
+        const effectType = slider.dataset.effectType; //
+        if (!effectType) {
+            console.warn(`Slider com ID "${key}" não tem data-effect-type. Pulando listener.`);
+            return;
+        }
         slider?.addEventListener('input', () => {
-            state.currentEffectValues[key] = parseFloat(slider.value); // Salva o valor atual do slider
+            state.currentEffectValues[key] = parseFloat(slider.value);
             applyEffectToSelectedElements(effectType, parseFloat(slider.value));
         });
     });
@@ -396,12 +389,6 @@ function setupEventListeners() {
     el.playhead.addEventListener('touchstart', startPlayheadDrag, { passive: false });
     window.addEventListener('touchmove', handlePlayheadDrag, { passive: false });
     window.addEventListener('touchend', stopPlayheadDrag);
-
-    // Listener para o slider de intensidade de efeito (este slider deve ser removido se cada efeito tem sua intensidade)
-    // Ou re-proposto para ter um uso mais claro. Por enquanto, mantido sem uso direto nas refatorações.
-    el.effectIntensitySlider.addEventListener('input', (e) => {
-        state.effectIntensity = parseFloat(e.target.value);
-    });
 
     window.addEventListener('keydown', e => {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
@@ -451,7 +438,7 @@ function getEventPos(e) {
 }
 
 function startAction(e) {
-    if (e.target === el.playhead) { // NOVO: Permite arrastar o playhead
+    if (e.target === el.playhead) {
         state.isDraggingPlayhead = true;
         d.body.style.cursor = 'ew-resize';
         if (state.isPlaying) {
@@ -466,58 +453,53 @@ function startAction(e) {
     state.lastPos = pos;
     state.isDrawing = true;
 
-    // Não há mais ferramentas de efeito que são ativadas por clique no canvas
-    // A ativação dos efeitos agora ocorre ao mover os sliders, impactando a seleção.
-
     switch (state.activeTool) {
         case 'select': {
             const clickedElement = getElementAtPos(pos);
-            const isAlreadySelected = clickedElement && state.selectedElements.includes(clickedElement.id);
+            const isMultiSelect = e.ctrlKey || e.metaKey;
 
-            if (isAlreadySelected) {
-                state.isMoving = true;
-                el.canvas.style.cursor = 'move';
-            } else {
-                state.isMoving = false;
-                const isMultiSelect = e.ctrlKey || e.metaKey;
-                if (clickedElement) {
-                    // SELECIONOU UM ELEMENTO
-                    if (isMultiSelect) {
-                        if (state.selectedElements.includes(clickedElement.id)) {
-                            // Desseleciona se já estiver selecionado e Ctrl/Cmd pressionado
-                            state.selectedElements = state.selectedElements.filter(id => id !== clickedElement.id);
-                        } else {
-                            // Adiciona à seleção se Ctrl/Cmd pressionado
-                            state.selectedElements.push(clickedElement.id);
-                        }
+            if (clickedElement) {
+                const isAlreadySelected = state.selectedElements.includes(clickedElement.id);
+
+                if (isMultiSelect) {
+                    if (isAlreadySelected) {
+                        state.selectedElements = state.selectedElements.filter(id => id !== clickedElement.id);
                     } else {
-                        // Seleção única
-                        state.selectedElements = [clickedElement.id];
-                    }
-                    // NOVO: Atualiza os sliders de efeito para o primeiro elemento selecionado
-                    if (state.selectedElements.length > 0) {
-                        const firstSelectedElement = findElementById(state.selectedElements[0]);
-                        updateEffectSlidersForSelection(firstSelectedElement);
-                    } else {
-                        resetEffectSliders(); // Se a seleção ficou vazia, zera os sliders
+                        state.selectedElements.push(clickedElement.id);
                     }
                 } else {
-                    // Clicou fora, iniciar seleção de área ou limpar seleção
-                    state.isSelecting = true;
-                    state.selectionStart = pos;
-                    state.selectionEnd = pos;
-                    if (!isMultiSelect) {
-                        state.selectedElements = [];
-                        // NOVO: Zera os sliders de efeito quando nada está selecionado
-                        resetEffectSliders();
-                    }
+                    state.selectedElements = [clickedElement.id];
+                }
+
+                if (state.selectedElements.length > 0 && (!isMultiSelect || !isAlreadySelected)) { //
+                    state.isMoving = true;
+                    el.canvas.style.cursor = 'move';
+                } else {
+                    state.isMoving = false;
+                    el.canvas.style.cursor = 'pointer';
+                }
+
+                if (state.selectedElements.length > 0) {
+                    const firstSelectedElement = findElementById(state.selectedElements[0]);
+                    updateEffectSlidersForSelection(firstSelectedElement);
+                } else {
+                    resetEffectSliders();
+                }
+            } else {
+                state.isMoving = false;
+                state.isSelecting = true;
+                state.selectionStart = pos;
+                state.selectionEnd = pos;
+                if (!isMultiSelect) {
+                    state.selectedElements = [];
+                    resetEffectSliders();
                 }
             }
             redrawAll();
             break;
         }
         case 'pencil':
-            const newStroke = { id: Date.now(), points: [pos], color: el.colorPicker.value, lineWidth: el.lineWidth.value, timbre: state.activeTimbre, effects: [] }; 
+            const newStroke = { id: Date.now(), points: [pos], color: el.colorPicker.value, lineWidth: parseFloat(el.lineWidth.value), timbre: state.activeTimbre, effects: [] }; //
             state.composition.strokes.push(newStroke);
             break;
         case 'eraser':
@@ -555,7 +537,9 @@ function startAction(e) {
             if (!state.rectangleStart) {
                 state.rectangleStart = pos;
             } else {
-                placeSymbol({ x: state.rectangleStart.x, y: state.rectangleStart.y, endX: pos.x, endY: pos.y }, state.activeTool);
+                const width = pos.x - state.rectangleStart.x;
+                const height = pos.y - state.rectangleStart.y;
+                placeSymbol({ x: state.rectangleStart.x, y: state.rectangleStart.y, width: width, height: height }, state.activeTool);
                 state.rectangleStart = null;
             }
             break;
@@ -584,26 +568,20 @@ function stopAction(e) {
             x: state.selectionStart.x,
             y: state.selectionStart.y,
             width: state.selectionEnd.x - state.selectionStart.x,
-            height: state.selectionEnd.y - state.selectionEnd.y, // Corrigido para height com base em y inicial e final
+            height: state.selectionEnd.y - state.selectionStart.y, //
         };
 
         const allElements = [...state.composition.strokes, ...state.composition.symbols];
-        // Filtra para garantir que apenas elementos dentro da caixa de seleção são adicionados
-        // e evita duplicatas se já estiverem em state.selectedElements
+        
+        state.selectedElements = [];
         allElements.forEach(element => {
             const r2 = getElementBoundingBox(element);
             if (doRectsIntersect(r1, r2)) {
-                if (!state.selectedElements.includes(element.id)) {
-                    state.selectedElements.push(element.id);
-                }
-            } else {
-                // Se o elemento foi incluído por multi-seleção antes e agora está fora da nova caixa, remove
-                state.selectedElements = state.selectedElements.filter(id => id !== element.id);
+                state.selectedElements.push(element.id);
             }
         });
         
         state.isSelecting = false;
-        // NOVO: Se múltiplos elementos estão selecionados, exibe as configurações do primeiro (ou limpa se nenhum)
         if (state.selectedElements.length > 0) {
             const firstSelectedElement = findElementById(state.selectedElements[0]);
             updateEffectSlidersForSelection(firstSelectedElement);
@@ -619,18 +597,15 @@ function stopAction(e) {
         setActiveTool('hand');
         return;
     }
-    // Para ferramentas de desenho que exigem dois cliques (glissando, line, circle, rectangle)
-    // O "stop action" só salva o estado se o segundo clique foi realizado
     if (['glissando', 'line', 'circle', 'rectangle'].includes(state.activeTool) && 
         (state.glissandoStart || state.lineStart || state.circleCenter || state.rectangleStart)) {
-        return; // Espera o segundo clique
+        return;
     }
-
 
     ctx.beginPath();
     const currentStroke = state.composition.strokes[state.composition.strokes.length - 1];
     if (currentStroke && currentStroke.points.length > 200) {
-       currentStroke.points = simplify(currentStroke.points, 0.5, true);
+       currentStroke.points = simplify(currentStroke.points, 0.5);
     }
     if (state.activeTool !== 'eraser') {
       saveState();
@@ -638,7 +613,7 @@ function stopAction(e) {
 }
 
 function performAction(e) {
-    if (state.isDraggingPlayhead) { // NOVO: Lógica para arrastar o playhead
+    if (state.isDraggingPlayhead) {
         handlePlayheadDrag(e);
         return;
     }
@@ -663,8 +638,9 @@ function performAction(e) {
 
     if (state.activeTool === 'hand') {
         const rawPos = { x: e.touches ? e.touches[0].clientX : e.clientX, y: e.touches ? e.touches[0].clientY : e.clientY };
-        const rawLastPos = { x: state.lastPos.rawX, y: state.lastPos.rawY };
-        if(rawLastPos.x){
+        const rawLastPos = state.lastPos.rawX !== undefined ? { x: state.lastPos.rawX, y: state.lastPos.rawY } : null;
+        
+        if(rawLastPos){
             const dx = rawPos.x - rawLastPos.x;
             const dy = rawPos.y - rawLastPos.y;
             el.mainCanvasArea.scrollLeft -= dx;
@@ -687,29 +663,26 @@ function performAction(e) {
     } else if (state.activeTool === 'eraser') {
         eraseAt(pos.x, pos.y);
     } else if (state.activeTool === 'line' && state.lineStart) {
-        // Apenas desenha uma prévia da linha
         redrawAll(); 
         ctx.beginPath();
         ctx.strokeStyle = el.colorPicker.value;
-        ctx.lineWidth = el.lineWidth.value;
+        ctx.lineWidth = parseFloat(el.lineWidth.value);
         ctx.moveTo(state.lineStart.x, state.lineStart.y);
         ctx.lineTo(pos.x, pos.y);
         ctx.stroke();
     } else if (state.activeTool === 'circle' && state.circleCenter) {
-        // Apenas desenha uma prévia do círculo
         redrawAll();
         const radius = Math.sqrt(Math.pow(pos.x - state.circleCenter.x, 2) + Math.pow(pos.y - state.circleCenter.y, 2));
         ctx.beginPath();
         ctx.strokeStyle = el.colorPicker.value;
-        ctx.lineWidth = el.lineWidth.value;
+        ctx.lineWidth = parseFloat(el.lineWidth.value);
         ctx.arc(state.circleCenter.x, state.circleCenter.y, radius, 0, 2 * Math.PI);
         ctx.stroke();
     } else if (state.activeTool === 'rectangle' && state.rectangleStart) {
-        // Apenas desenha uma prévia do retângulo
         redrawAll();
         ctx.beginPath();
         ctx.strokeStyle = el.colorPicker.value;
-        ctx.lineWidth = el.lineWidth.value;
+        ctx.lineWidth = parseFloat(el.lineWidth.value);
         ctx.rect(state.rectangleStart.x, state.rectangleStart.y, pos.x - state.rectangleStart.x, pos.y - state.rectangleStart.y);
         ctx.stroke();
     }
@@ -763,10 +736,8 @@ function handleTimelineClick(e) {
     redrawAll();
 }
 
-// --- Funções de arrastar o Playhead ---
 function startPlayheadDrag(e) {
-    // Essa função já é chamada pelo mousedown do playhead no início de startAction
-    // A lógica de arrastar está no performAction e o stop no stopPlayheadDrag
+    // A lógica principal de drag está em performAction
 }
 
 function handlePlayheadDrag(e) {
@@ -790,7 +761,7 @@ function stopPlayheadDrag() {
     if (state.isDraggingPlayhead) {
         state.isDraggingPlayhead = false;
         d.body.style.cursor = 'default';
-        setActiveTool(state.activeTool); // Restaura o cursor da ferramenta
+        setActiveTool(state.activeTool);
     }
 }
 
@@ -810,11 +781,10 @@ function handleClear() {
         state.historyIndex = -1;
         saveState(true);
         redrawAll();
-        resetEffectSliders(); // Zera os sliders após limpar
+        resetEffectSliders();
     }
 }
 
-// placeSymbol agora é apenas para símbolos de desenho, e todos recebem um array 'effects'
 function placeSymbol(options, type, glissandoStart = null) {
     const symbol = {
         id: Date.now() + Math.random(),
@@ -822,7 +792,7 @@ function placeSymbol(options, type, glissandoStart = null) {
         color: el.colorPicker.value,
         size: parseFloat(el.lineWidth.value),
         timbre: state.activeTimbre,
-        effects: [] // Todos os novos símbolos iniciam sem efeitos aplicados
+        effects: [] //
     };
 
     if (type === 'glissando' && glissandoStart) {
@@ -844,183 +814,162 @@ function placeSymbol(options, type, glissandoStart = null) {
         symbol.y = options.y;
         symbol.width = options.width;
         symbol.height = options.height;
-    } else { // Para símbolos de clique único como staccato, percussion, etc.
+    } else {
         symbol.x = options.x;
         symbol.y = options.y;
     }
 
     state.composition.symbols.push(symbol);
-    drawElementWithEffects(symbol); // Usar drawElementWithEffects para desenhar novos símbolos
+    drawElementWithEffects(symbol);
     saveState();
 }
 
-// NOVO: Função para desenhar um elemento aplicando seus efeitos visuais
 function drawElementWithEffects(element) {
     if (!element) return;
 
-    ctx.save(); // Salva o estado original antes de aplicar qualquer efeito visual
+    ctx.save();
 
-    // Garante que o array de efeitos existe
     element.effects = element.effects || [];
 
-    // --- Aplicação de Efeitos Visuais (Camadas Inferiores) ---
-    // Efeitos que manipulam a sombra, opacidade geral ou que são desenhados como "camadas" atrás do elemento principal.
+    let currentGlobalAlpha = ctx.globalAlpha;
 
-    let currentGlobalAlpha = ctx.globalAlpha; // Armazena a opacidade atual para poder modificá-la e restaurá-la
-
-    // Efeito de Volume/Ganho (altera a opacidade geral do elemento)
     const gainEffect = element.effects.find(e => e.type === 'volumeZone' || e.type === 'gain');
     if (gainEffect) {
-        const gainAmount = gainEffect.params.gain || 1.0; // 0 a 2.0
-        currentGlobalAlpha = Math.max(0.2, Math.min(1.0, gainAmount)); // Opacidade de 0.2 (quase transparente) a 1.0
+        const gainAmount = gainEffect.params.gain || 1.0;
+        currentGlobalAlpha = Math.max(0.2, Math.min(1.0, gainAmount));
         ctx.globalAlpha = currentGlobalAlpha;
     } else {
-        ctx.globalAlpha = 1.0; // Reseta para opacidade total se não houver efeito de ganho
+        ctx.globalAlpha = 1.0;
     }
 
-    // Efeito de Reverb (sombra difusa ao redor do desenho)
     const reverbEffect = element.effects.find(e => e.type === 'reverbZone');
     if (reverbEffect && reverbEffect.params.mix > 0) {
-        const reverbAmount = reverbEffect.params.mix; // 0 a 1
-        ctx.shadowBlur = reverbAmount * 30; // Mais reverb, mais blur na sombra (0 a 30px)
-        ctx.shadowColor = element.color; // Cor da sombra é a cor do desenho
+        const reverbAmount = reverbEffect.params.mix;
+        ctx.shadowBlur = reverbAmount * 30;
+        ctx.shadowColor = element.color;
         ctx.shadowOffsetX = 0;
         ctx.shadowOffsetY = 0;
     } else {
-        // Reseta sombra se não houver reverb ou mix 0
         ctx.shadowBlur = 0;
         ctx.shadowOffsetX = 0;
         ctx.shadowOffsetY = 0;
     }
 
-    // Efeito de Distorção (sombra com pequeno blur e deslocamento aleatório para "ruído")
     const distortionEffect = element.effects.find(e => e.type === 'distortion');
     if (distortionEffect && distortionEffect.params.amount > 0) {
-        const distortionAmount = distortionEffect.params.amount; // 0 a 200
-        ctx.shadowBlur = Math.min(5, distortionAmount * 0.05); // Pequeno blur (max 5px)
-        ctx.shadowColor = element.color; // ou uma cor avermelhada/escura para distorção
-        ctx.shadowOffsetX = (Math.random() - 0.5) * distortionAmount * 0.02; // Pequeno deslocamento aleatório
+        const distortionAmount = distortionEffect.params.amount;
+        ctx.shadowBlur = Math.min(5, distortionAmount * 0.05);
+        ctx.shadowColor = element.color;
+        ctx.shadowOffsetX = (Math.random() - 0.5) * distortionAmount * 0.02;
         ctx.shadowOffsetY = (Math.random() - 0.5) * distortionAmount * 0.02;
     }
-    // NOTA: Se houver reverb E distorção, a última sombra aplicada irá prevalecer ou se combinar (dependendo do navegador).
-    // Para um controle mais fino, poderia-se desenhar múltiplas camadas de sombras.
-    // Por simplicidade, assumimos que uma sombra principal será suficiente ou que a ordem no forEach define a prioridade.
-
-    // === Efeitos de Pulsação/Ondulação (Vibrato, Tremolo Amplitude, Wah) ===
-    // Estes alteram a forma ou a escala do elemento base.
+    
     const vibratoEffect = element.effects.find(e => e.type === 'vibratoZone');
     const tremoloAmpEffect = element.effects.find(e => e.type === 'tremoloAmplitude');
     const wahEffect = element.effects.find(e => e.type === 'wah');
 
     if (vibratoEffect || tremoloAmpEffect || wahEffect) {
-        ctx.save(); // Salva o estado para a transformação
+        ctx.save();
         const centerX = element.x || (element.points ? element.points[0].x : 0);
         const centerY = element.y || (element.points ? element.points[0].y : 0);
 
-        ctx.translate(centerX, centerY); // Move o ponto de origem para o centro do elemento
+        ctx.translate(centerX, centerY);
 
         if (vibratoEffect) {
             const rate = vibratoEffect.params.rate || 5;
             const depth = vibratoEffect.params.depth || 50;
-            const offsetY = Math.sin(Date.now() * 0.005 * rate) * (depth * 0.1); // Oscilação vertical
+            const offsetY = Math.sin(Date.now() * 0.005 * rate) * (depth * 0.1);
             ctx.translate(0, offsetY);
         }
 
         if (tremoloAmpEffect) {
             const rate = tremoloAmpEffect.params.rate || 8;
-            const depth = tremoloAmpEffect.params.depth || 0.5; // 0 a 1
-            const scaleFactor = 1 + Math.sin(Date.now() * 0.01 * rate) * (depth * 0.2); // Pulsação de escala
+            const depth = tremoloAmpEffect.params.depth || 0.5;
+            const scaleFactor = 1 + Math.sin(Date.now() * 0.01 * rate) * (depth * 0.2);
             ctx.scale(scaleFactor, scaleFactor);
         }
         
-        if (wahEffect) {
+        if (wahEffect) { //
             const rate = wahEffect.params.rate || 2;
             const range = wahEffect.params.range || 2000;
-            const brightness = 1 + Math.sin(Date.now() * 0.005 * rate) * (range / FREQ_MAX * 0.5); // Simula brilho pulsante
-            // Não é um filtro CSS, mas pode simularmos com opacidade ou luz
-            // ctx.globalAlpha = currentGlobalAlpha * brightness; // Isso pode ser muito agressivo
-            ctx.shadowBlur = brightness * 10;
-            ctx.shadowColor = element.color; // Ou branco
+            const wobbleFactor = Math.sin(Date.now() * 0.005 * rate) * (range / FREQ_MAX * 0.2);
+            ctx.shadowBlur = Math.abs(wobbleFactor) * 10;
+            ctx.shadowColor = element.color;
+            ctx.globalAlpha = currentGlobalAlpha * (1 + Math.abs(wobbleFactor) * 0.5);
         }
 
-        ctx.translate(-centerX, -centerY); // Move o ponto de origem de volta
-        drawBaseElement(element, ctx); // Desenha o elemento base com as transformações
-        ctx.restore(); // Restaura o estado após as transformações
+        ctx.translate(-centerX, -centerY);
+        drawBaseElement(element, ctx);
+        ctx.restore();
     } else {
-        // Se não houver efeitos de pulsação/ondulação, desenha o elemento base
         drawBaseElement(element, ctx);
     }
     
-
-    // === Efeito de Pan (Leve deslocamento horizontal / Duplicação sutil) ===
     const panEffect = element.effects.find(e => e.type === 'panZone');
-    if (panEffect && Math.abs(panEffect.params.pan) > 0.05) { // Aplicar apenas se houver pan significativo
+    if (panEffect && Math.abs(panEffect.params.pan) > 0.05) {
         ctx.save();
-        const panAmount = panEffect.params.pan; // -1 a 1
-        const offset = panAmount * 5; // Deslocamento visual (ajuste o 5 para mais ou menos)
-        ctx.globalAlpha = (ctx.globalAlpha || 1.0) * 0.4; // Menor opacidade para a "cópia"
+        const panAmount = panEffect.params.pan;
+        const offset = panAmount * 5;
+        ctx.globalAlpha = (ctx.globalAlpha || 1.0) * 0.4;
         ctx.translate(offset, 0);
         drawBaseElement(element, ctx);
         ctx.restore();
     }
 
-    // === Efeitos de Delay (Cadeia de ecos visuais com opacidade decrescente) ===
     const delayEffect = element.effects.find(e => e.type === 'delayZone');
     if (delayEffect && delayEffect.params.mix > 0) {
-        const delayAmount = delayEffect.params.mix; // 0 a 1
+        const delayAmount = delayEffect.params.mix;
         const timeParam = delayEffect.params.time || 0.25;
-        const numEchoes = Math.floor(delayAmount * 3) + 1; // 1 a 4 ecos
-        const baseOffsetX = 10 * timeParam; // Base para o deslocamento visual do eco
-        const baseOffsetY = 5 * timeParam; // Pequeno deslocamento vertical
+        const numEchoes = Math.floor(delayAmount * 3) + 1;
+        const baseOffsetX = 10 * timeParam;
+        const baseOffsetY = 5 * timeParam;
 
-        for (let i = numEchoes; i >= 1; i--) { // Desenha os ecos de trás para frente
+        for (let i = numEchoes; i >= 1; i--) {
             ctx.save();
-            ctx.globalAlpha = (currentGlobalAlpha || 1.0) * (delayAmount * 0.3) * (i / numEchoes); // Opacidade do eco diminui
-            ctx.translate(-baseOffsetX * i, -baseOffsetY * i); // Deslocamento para trás
+            ctx.globalAlpha = (currentGlobalAlpha || 1.0) * (delayAmount * 0.3) * (i / numEchoes);
+            ctx.translate(-baseOffsetX * i, -baseOffsetY * i);
             drawBaseElement(element, ctx);
             ctx.restore();
         }
     }
     
-    // === Efeitos de Filtros e EQ (Brilhos/Sombras direcionais) ===
     const filterEffects = element.effects.filter(e => ['lowpassFilter', 'highpassFilter', 'bandpassFilter', 'notchFilter', 'bassEq', 'midEq', 'trebleEq'].includes(e.type));
     if (filterEffects.length > 0) {
         filterEffects.forEach(effect => {
             const intensity = effect.params.gain !== undefined ? Math.abs(effect.params.gain) : (effect.params.Q || 1);
             if (intensity > 0) {
                 ctx.save();
-                ctx.globalAlpha = (currentGlobalAlpha || 1.0) * (0.1 + (intensity / 20) * 0.4); // Opacidade sutil para o "brilho"
-                ctx.lineWidth = element.lineWidth + (intensity / 10); // Linha um pouco mais grossa
+                ctx.globalAlpha = (currentGlobalAlpha || 1.0) * (0.1 + (intensity / 20) * 0.4);
+                ctx.lineWidth = element.lineWidth + (intensity / 10);
 
-                // Ajustes de sombra/brilho para indicar a frequência
-                let shadowColor = 'rgba(255, 255, 255, 0.5)'; // Padrão
+                let shadowColor = 'rgba(255, 255, 255, 0.5)';
                 let shadowOffsetY = 0;
                 let shadowOffsetX = 0;
 
                 switch (effect.type) {
-                    case 'lowpassFilter': // Corta agudos, passa graves: sutil sombreamento nos agudos
-                        shadowColor = 'rgba(0, 0, 0, 0.3)'; // Escuro
-                        shadowOffsetY = -2; // Para cima (agudos)
+                    case 'lowpassFilter':
+                        shadowColor = 'rgba(0, 0, 0, 0.3)';
+                        shadowOffsetY = -2;
                         break;
-                    case 'highpassFilter': // Corta graves, passa agudos: sutil brilho nos agudos
-                        shadowColor = 'rgba(255, 255, 255, 0.5)'; // Brilho
-                        shadowOffsetY = 2; // Para baixo (graves)
+                    case 'highpassFilter':
+                        shadowColor = 'rgba(255, 255, 255, 0.5)';
+                        shadowOffsetY = 2;
                         break;
-                    case 'bandpassFilter': // Passa banda: brilho concentrado
-                        shadowColor = 'rgba(0, 255, 255, 0.6)'; // Ciano
+                    case 'bandpassFilter':
+                        shadowColor = 'rgba(0, 255, 255, 0.6)';
                         break;
-                    case 'notchFilter': // Corta banda: "buraco" ou desfoque no centro
-                        shadowColor = 'rgba(255, 0, 0, 0.5)'; // Vermelho
+                    case 'notchFilter':
+                        shadowColor = 'rgba(255, 0, 0, 0.5)';
                         break;
                     case 'bassEq':
-                        shadowColor = 'rgba(0, 0, 0, 0.4)'; // Sombra forte para graves
+                        shadowColor = 'rgba(0, 0, 0, 0.4)';
                         shadowOffsetY = 3;
                         break;
                     case 'midEq':
-                        shadowColor = 'rgba(255, 200, 0, 0.5)'; // Amarelo para médios
+                        shadowColor = 'rgba(255, 200, 0, 0.5)';
                         break;
                     case 'trebleEq':
-                        shadowColor = 'rgba(255, 255, 255, 0.6)'; // Brilho forte para agudos
+                        shadowColor = 'rgba(255, 255, 255, 0.6)';
                         shadowOffsetY = -3;
                         break;
                 }
@@ -1029,39 +978,32 @@ function drawElementWithEffects(element) {
                 ctx.shadowOffsetX = shadowOffsetX;
                 ctx.shadowOffsetY = shadowOffsetY;
 
-                drawBaseElement(element, ctx); // Desenha a camada do filtro
+                drawBaseElement(element, ctx);
                 ctx.restore();
             }
         });
     }
 
-    // === Efeitos de Modulação (Phaser, Flanger, Chorus) - Cópias "fantasmas" ===
     const complexModEffects = element.effects.filter(e => ['phaser', 'flanger', 'chorus'].includes(e.type));
     if (complexModEffects.length > 0) {
         complexModEffects.forEach(effect => {
             ctx.save();
-            const mix = effect.params.mix || 0.5; // Mix do efeito
-            const rate = effect.params.rate || 0.5; // Frequência do LFO
-            const numCopies = 2; // Número de cópias fantasmas
-            const baseSpread = 5; // Espalhamento base
+            const mix = effect.params.mix || 0.5;
+            const rate = effect.params.rate || 0.5;
+            const numCopies = 2;
+            const baseSpread = 5;
 
             for (let i = 1; i <= numCopies; i++) {
                 ctx.save();
-                const ghostAlpha = (currentGlobalAlpha || 1.0) * (mix * 0.5) * (1 - (i / (numCopies + 1))); // Opacidade decrescente
+                const ghostAlpha = (currentGlobalAlpha || 1.0) * (mix * 0.5) * (1 - (i / (numCopies + 1)));
                 ctx.globalAlpha = ghostAlpha;
 
-                // Deslocamento para criar o efeito de espalhamento
                 const offsetX = Math.sin(Date.now() * 0.005 * rate + i) * baseSpread * (mix);
                 const offsetY = Math.cos(Date.now() * 0.005 * rate + i) * baseSpread * (mix);
 
-                // Pequenas variações de cor para simular a mudança de fase
-                // Isso pode ser computacionalmente caro ou não funcionar em todos os navegadores.
-                // Uma alternativa mais leve é usar a cor do elemento, mas variar a saturação ou brilho.
-                // ctx.filter = `hue-rotate(${i * 15 * mix}deg)`; // Pode não ser suportado uniformemente ou ser caro
-
                 ctx.translate(offsetX, offsetY);
                 drawBaseElement(element, ctx);
-                ctx.translate(-2 * offsetX, -2 * offsetY); // Desfaz a translação para o próximo fantasma (para ir em direções opostas)
+                ctx.translate(-2 * offsetX, -2 * offsetY);
                 drawBaseElement(element, ctx);
                 ctx.restore();
             }
@@ -1069,10 +1011,9 @@ function drawElementWithEffects(element) {
         });
     }
     
-    ctx.restore(); // Restaura o estado original do canvas após aplicar todos os efeitos
+    ctx.restore();
 }
 
-// Função auxiliar para desenhar o elemento base (sem efeitos visuais, apenas sua forma e cor originais)
 function drawBaseElement(s, context) {
     context.beginPath();
     context.strokeStyle = s.color;
@@ -1080,22 +1021,27 @@ function drawBaseElement(s, context) {
     context.lineCap = 'round';
     context.lineJoin = 'round';
 
-    if (s.points) { // É um traço
+    if (s.points) {
         if (s.points.length < 2) return;
         context.moveTo(s.points[0].x, s.points[0].y);
         for (let i = 1; i < s.points.length; i++) {
             context.lineTo(s.points[i].x, s.points[i].y);
         }
         context.stroke();
-    } else { // É um símbolo
-        context.fillStyle = s.color; // Símbolos têm fillStyle
+    } else {
+        context.fillStyle = s.color;
         switch(s.type) {
             case 'staccato': context.arc(s.x, s.y, s.size / 4, 0, 2 * Math.PI); context.fill(); break;
-            case 'percussion': context.moveTo(s.x - s.size/2, s.y - s.size/2); context.lineTo(s.x + s.size/2, s.x + s.size/2); context.moveTo(s.x + s.size/2, s.y - s.size/2); context.lineTo(s.x - s.size/2, s.y + s.size/2); context.stroke(); break;
+            case 'percussion': 
+                context.moveTo(s.x - s.size/2, s.y - s.size/2); 
+                context.lineTo(s.x + s.size/2, s.y + s.size/2); //
+                context.moveTo(s.x + s.size/2, s.y - s.size/2); 
+                context.lineTo(s.x - s.size/2, s.y + s.size/2); 
+                context.stroke(); 
+                break;
             case 'glissando': context.moveTo(s.x, s.y); context.lineTo(s.endX, s.endY); context.stroke(); break;
             case 'arpeggio': context.lineWidth = Math.max(2, s.size / 15); context.moveTo(s.x - s.size, s.y + s.size/2); context.bezierCurveTo(s.x - s.size/2, s.y - s.size, s.x + s.size/2, s.y + s.size, s.x + s.size, s.y-s.size/2); context.stroke(); break;
             case 'granular': 
-                // Removed globalAlpha from here as it's handled by visual effects logic
                 context.fillRect(s.x - s.size, s.y - s.size/2, s.size*2, s.size); 
                 break;
             case 'tremolo': context.moveTo(s.x - s.size, s.y); context.lineTo(s.x - s.size/2, s.y - s.size/2); context.lineTo(s.x, s.y); context.lineTo(s.x + s.size/2, s.y + s.size/2); context.lineTo(s.x + s.size, s.y); context.stroke(); break;
@@ -1105,7 +1051,6 @@ function drawBaseElement(s, context) {
         }
     }
 }
-
 
 function eraseAt(x, y) {
     let somethingWasErased = false;
@@ -1129,12 +1074,8 @@ function eraseAt(x, y) {
 }
 
 // --- APLICAR EFEITOS A ELEMENTOS SELECIONADOS ---
-// Esta função agora é chamada pelos sliders de efeito, e o `value` é o valor do slider.
 function applyEffectToSelectedElements(effectType, sliderValue) {
     if (state.selectedElements.length === 0) {
-        // Se nada está selecionado, apenas atualiza o valor do slider no estado
-        // mas não aplica a nenhum elemento.
-        // Já está salvo em state.currentEffectValues, que é lido por updateEffectSlidersForSelection
         return; 
     }
 
@@ -1147,107 +1088,107 @@ function applyEffectToSelectedElements(effectType, sliderValue) {
 
             let existingEffect = element.effects.find(e => e.type === effectType);
             
-            // Valor normalizado do slider (0 a 1) para muitos cálculos de efeito
-            // Pega o max/min do slider correto para a normalização
-            const sliderElement = Object.values(el.effectSliders).find(s => s.dataset.effectType === effectType); // Corrigido aqui
+            const sliderElement = Object.values(el.effectSliders).find(s => s.dataset.effectType === effectType); //
+            if (!sliderElement) {
+                console.warn(`Slider element for effectType "${effectType}" not found.`);
+                return;
+            }
             const sliderMax = parseFloat(sliderElement.max);
             const sliderMin = parseFloat(sliderElement.min);
-            const normalizedValue = (sliderValue - sliderMin) / (sliderMax - sliderMin); // Normalizado para 0-1
+            const normalizedValue = (sliderValue - sliderMin) / (sliderMax - sliderMin);
 
-            const params = {}; // Parâmetros a serem atualizados/criados
+            const params = {};
 
             switch(effectType) {
-                case 'reverbZone': // Corresponde ao slider 'reverbEffect'
-                    params.decay = (normalizedValue * 2.5) + 0.5; // Duração do reverb (0.5 a 3.0s)
-                    params.mix = normalizedValue; // Mix de 0 a 1
+                case 'reverbZone':
+                    params.decay = (normalizedValue * 2.5) + 0.5;
+                    params.mix = normalizedValue;
                     break;
-                case 'delayZone': // Corresponde ao slider 'delayEffect'
-                    params.time = normalizedValue * 0.75; // Tempo do delay (0 a 0.75s)
-                    params.feedback = normalizedValue * 0.8; // Feedback (0 a 0.8)
-                    params.mix = normalizedValue; // Mix de 0 a 1
+                case 'delayZone':
+                    params.time = normalizedValue * 0.75;
+                    params.feedback = normalizedValue * 0.8;
+                    params.mix = normalizedValue;
                     break;
-                case 'volumeZone': // Corresponde ao slider 'volumeEffect'
-                case 'gain': // O antigo 'gain' era uma ferramenta, agora é um slider 'gainEffect'
-                    params.gain = (sliderValue / 100) * 2; // Ganho de 0 a 2.0 (slider de 0-200)
+                case 'volumeZone':
+                case 'gain':
+                    params.gain = (sliderValue / 100) * 2;
                     break;
-                case 'panZone': // Corresponde ao slider 'panEffect'
-                    params.pan = (sliderValue / 100); // Pan de -1.0 a 1.0 (slider de -100 a 100)
+                case 'panZone':
+                    params.pan = (sliderValue / 100);
                     break;
-                case 'vibratoZone': // Corresponde ao slider 'vibratoEffect'
-                    params.rate = (normalizedValue * 10) + 1; // Frequência do LFO (1 a 11 Hz)
-                    params.depth = normalizedValue * 100; // Profundidade do vibrato em Hz (0 a 100 Hz)
+                case 'vibratoZone':
+                    params.rate = (normalizedValue * 10) + 1;
+                    params.depth = normalizedValue * 100;
                     break;
-                case 'lowpassFilter': // Corresponde ao slider 'lowpassFilterEffect'
-                    params.frequency = FREQ_MIN + (FREQ_MAX - FREQ_MIN) * (1 - normalizedValue); // Inverso: lowpass no 0 corta tudo, no 100 passa tudo
+                case 'lowpassFilter': //
+                    params.frequency = FREQ_MIN + (FREQ_MAX - FREQ_MIN) * normalizedValue; // Invertido para 0=baixo, 100=alto (passa tudo)
                     params.Q = 10 * normalizedValue;
                     break;
-                case 'highpassFilter': // Corresponde ao slider 'highpassFilterEffect'
-                    params.frequency = FREQ_MIN + (FREQ_MAX - FREQ_MIN) * normalizedValue; // Highpass no 0 passa tudo, no 100 corta tudo
-                    params.Q = 10 * normalizedValue;
-                    break;
-                case 'bandpassFilter': // Corresponde ao slider 'bandpassFilterEffect'
+                case 'highpassFilter':
                     params.frequency = FREQ_MIN + (FREQ_MAX - FREQ_MIN) * normalizedValue;
                     params.Q = 10 * normalizedValue;
                     break;
-                case 'notchFilter': // Corresponde ao slider 'notchFilterEffect'
+                case 'bandpassFilter':
                     params.frequency = FREQ_MIN + (FREQ_MAX - FREQ_MIN) * normalizedValue;
                     params.Q = 10 * normalizedValue;
                     break;
-                case 'phaser': // Corresponde ao slider 'phaserEffect'
+                case 'notchFilter':
+                    params.frequency = FREQ_MIN + (FREQ_MAX - FREQ_MIN) * normalizedValue;
+                    params.Q = 10 * normalizedValue;
+                    break;
+                case 'phaser':
                     params.rate = (normalizedValue * 2) + 0.1;
                     params.depth = normalizedValue * 2000;
                     break;
-                case 'flanger': // Corresponde ao slider 'flangerEffect'
+                case 'flanger':
                     params.rate = (normalizedValue * 0.5) + 0.1;
-                    params.delay = normalizedValue * 0.015; // max 15ms
+                    params.delay = normalizedValue * 0.015;
                     params.feedback = normalizedValue * 0.9;
                     break;
-                case 'chorus': // Corresponde ao slider 'chorusEffect'
+                case 'chorus':
                     params.rate = (normalizedValue * 0.5) + 0.1;
-                    params.delay = normalizedValue * 0.025; // max 25ms
+                    params.delay = normalizedValue * 0.025;
                     params.mix = normalizedValue;
                     break;
-                case 'distortion': // Corresponde ao slider 'distortionEffect'
-                    params.amount = normalizedValue * 200; // 0 a 200
+                case 'distortion':
+                    params.amount = normalizedValue * 200;
                     break;
                 case 'compressor':
-                    params.threshold = -20 - (normalizedValue * 40); // -20 a -60 dB
-                    params.ratio = 1 + (normalizedValue * 10); // 1 a 11
+                    params.threshold = -20 - (normalizedValue * 40);
+                    params.ratio = 1 + (normalizedValue * 10);
                     break;
-                case 'tremoloAmplitude': // Corresponde ao slider 'tremoloAmplitudeEffect'
-                    params.rate = (normalizedValue * 15) + 1; // 1 a 16 Hz
-                    params.depth = normalizedValue; // 0 a 1
+                case 'tremoloAmplitude':
+                    params.rate = (normalizedValue * 15) + 1;
+                    params.depth = normalizedValue;
                     break;
-                case 'wah': // Corresponde ao slider 'wahEffect'
+                case 'wah':
                     params.rate = (normalizedValue * 5) + 0.5; 
                     params.range = normalizedValue * 3000; 
                     params.q = 5 + (normalizedValue * 15); 
-                    params.baseFreq = (FREQ_MIN + FREQ_MAX) / 2; // Frequência central do filtro Wah
+                    params.baseFreq = (FREQ_MIN + FREQ_MAX) / 2;
                     break;
-                // NOVOS EFEITOS EQ
                 case 'bassEq':
-                    params.gain = sliderValue; // Ganho em dB (-20 a 20)
-                    params.frequency = 100; // Frequência de corte/centro para graves (ex: 100 Hz)
+                    params.gain = sliderValue;
+                    params.frequency = 100;
                     break;
                 case 'midEq':
-                    params.gain = sliderValue; // Ganho em dB (-20 a 20)
-                    params.frequency = 1000; // Ex: 1 kHz
-                    params.Q = 1; // Q padrão para mid
+                    params.gain = sliderValue;
+                    params.frequency = 1000;
+                    params.Q = 1;
                     break;
                 case 'trebleEq':
-                    params.gain = sliderValue; // Ganho em dB (-20 a 20)
-                    params.frequency = 3000; // Ex: 3 kHz
+                    params.gain = sliderValue;
+                    params.frequency = 3000;
                     break;
             }
 
-            // Lógica para remover o efeito se o controle estiver em seu estado "neutro" ou zero
             const isNeutralValue = (
-                (effectType === 'volumeZone' || effectType === 'gain') ? sliderValue === 100 : // Volume/Gain 100 é neutro
-                (effectType === 'panZone') ? sliderValue === 0 : // Pan 0 é neutro
-                (effectType === 'lowpassFilter') ? sliderValue === 100 : // LowPass 100% é neutro (passa tudo)
-                (effectType === 'highpassFilter') ? sliderValue === 0 : // HighPass 0% é neutro (passa tudo)
-                (effectType === 'bassEq' || effectType === 'midEq' || effectType === 'trebleEq') ? sliderValue === 0 : // EQ 0dB é neutro
-                sliderValue === 0 // Demais efeitos, 0 é neutro
+                (effectType === 'volumeZone' || effectType === 'gain') ? sliderValue === 100 :
+                (effectType === 'panZone') ? sliderValue === 0 :
+                (effectType === 'lowpassFilter') ? sliderValue === 0 : // CORREÇÃO: LowPass neutro é slider 0
+                (effectType === 'highpassFilter') ? sliderValue === 0 :
+                (effectType === 'bassEq' || effectType === 'midEq' || effectType === 'trebleEq') ? sliderValue === 0 :
+                sliderValue === 0
             );
             
             if (isNeutralValue) {
@@ -1265,45 +1206,37 @@ function applyEffectToSelectedElements(effectType, sliderValue) {
     redrawAll(); 
 }
 
-// Função para atualizar os sliders de efeito com os valores do elemento selecionado
 function updateEffectSlidersForSelection(element) {
-    // Primeiro, zera todos os sliders para um estado neutro
     resetEffectSliders();
 
     if (element && element.effects) {
         element.effects.forEach(effect => {
-            // Encontra o slider correspondente ao tipo de efeito
             const slider = Object.values(el.effectSliders).find(s => s.dataset.effectType === effect.type);
             if (slider) {
-                // Mapeia os parâmetros do efeito de volta para o valor do slider
                 let sliderValue;
                 switch (effect.type) {
                     case 'reverbZone':
-                        // O mix do reverb vai de 0 a 1, o slider de 0 a 100
                         sliderValue = effect.params.mix * 100; 
                         break;
                     case 'delayZone':
-                        // O mix do delay vai de 0 a 1, o slider de 0 a 100
                         sliderValue = effect.params.mix * 100;
                         break;
                     case 'volumeZone':
                     case 'gain':
-                        sliderValue = (effect.params.gain / 2) * 100; // De 0-2 para 0-200
+                        sliderValue = (effect.params.gain / 2) * 100;
                         break;
                     case 'panZone':
-                        sliderValue = effect.params.pan * 100; // De -1 a 1 para -100 a 100
+                        sliderValue = effect.params.pan * 100;
                         break;
                     case 'vibratoZone':
-                        sliderValue = (effect.params.depth / 100) * 100; // depth é 0-100, slider 0-100
+                        sliderValue = (effect.params.depth / 100) * 100;
                         break;
-                    case 'lowpassFilter':
-                        // Inverso: lowpass no 0 corta tudo (freq baixa), no 100 passa tudo (freq alta)
-                        // A frequência é FREQ_MIN + (RANGE * (1 - normalizedValue))
-                        // normalizedValue = 1 - ((freq - FREQ_MIN) / RANGE)
+                    case 'lowpassFilter': // CORREÇÃO: Mapeamento Low Pass
+                        // Se a frequência está em FREQ_MAX (sem filtro), slider deve ser 0.
+                        // Se a frequência está em FREQ_MIN (totalmente filtrado), slider deve ser 100.
                         sliderValue = 100 - ( (effect.params.frequency - FREQ_MIN) / (FREQ_MAX - FREQ_MIN) * 100 );
                         break;
                     case 'highpassFilter':
-                        // Highpass no 0 passa tudo (freq baixa), no 100 corta tudo (freq alta)
                         sliderValue = ( (effect.params.frequency - FREQ_MIN) / (FREQ_MAX - FREQ_MIN) * 100 );
                         break;
                     case 'bandpassFilter':
@@ -1311,42 +1244,41 @@ function updateEffectSlidersForSelection(element) {
                         sliderValue = ( (effect.params.frequency - FREQ_MIN) / (FREQ_MAX - FREQ_MIN) * 100 );
                         break;
                     case 'phaser':
-                        sliderValue = (effect.params.depth / 2000) * 100; // depth 0-2000, slider 0-100
+                        sliderValue = (effect.params.depth / 2000) * 100;
                         break;
                     case 'flanger':
-                        sliderValue = (effect.params.feedback / 0.9) * 100; // feedback 0-0.9, slider 0-100
+                        sliderValue = (effect.params.feedback / 0.9) * 100;
                         break;
                     case 'chorus':
-                        sliderValue = (effect.params.mix) * 100; // mix 0-1, slider 0-100
+                        sliderValue = (effect.params.mix) * 100;
                         break;
                     case 'distortion':
-                        sliderValue = (effect.params.amount / 200) * 100; // amount 0-200, slider 0-100
+                        sliderValue = (effect.params.amount / 200) * 100;
                         break;
                     case 'compressor':
-                        sliderValue = (effect.params.ratio - 1) / 10 * 100; // ratio 1-11, slider 0-100
+                        sliderValue = (effect.params.ratio - 1) / 10 * 100;
                         break;
                     case 'tremoloAmplitude':
-                        sliderValue = (effect.params.depth) * 100; // depth 0-1, slider 0-100
+                        sliderValue = (effect.params.depth) * 100;
                         break;
                     case 'wah':
-                        sliderValue = (effect.params.range / 3000) * 100; // range 0-3000, slider 0-100
+                        sliderValue = (effect.params.range / 3000) * 100;
                         break;
                     case 'bassEq':
                     case 'midEq':
                     case 'trebleEq':
-                        sliderValue = effect.params.gain; // ganho -20 a 20, slider -20 a 20
+                        sliderValue = effect.params.gain;
                         break;
                     default:
-                        sliderValue = 0; // Default para 0 se não mapeado
+                        sliderValue = 0;
                 }
                 slider.value = sliderValue;
-                state.currentEffectValues[slider.id] = sliderValue; // Atualiza o estado interno
+                state.currentEffectValues[slider.id] = sliderValue;
             }
         });
     }
 }
 
-// Função para zerar todos os sliders de efeito para seus valores neutros
 function resetEffectSliders() {
     Object.keys(el.effectSliders).forEach(key => {
         const slider = el.effectSliders[key];
@@ -1354,27 +1286,27 @@ function resetEffectSliders() {
         switch (slider.dataset.effectType) {
             case 'volumeZone':
             case 'gain':
-                neutralValue = 100; // Volume/Gain neutro é 100%
+                neutralValue = 100;
                 break;
             case 'panZone':
-                neutralValue = 0; // Pan neutro é 0
+                neutralValue = 0;
                 break;
             case 'lowpassFilter':
-                neutralValue = 100; // LowPass neutro é 100 (passa tudo)
+                neutralValue = 0; //
                 break;
             case 'highpassFilter':
-                neutralValue = 0; // HighPass neutro é 0 (passa tudo)
+                neutralValue = 0;
                 break;
             case 'bassEq':
             case 'midEq':
             case 'trebleEq':
-                neutralValue = 0; // EQ neutro é 0dB
+                neutralValue = 0;
                 break;
             default:
-                neutralValue = 0; // A maioria dos efeitos começa em 0
+                neutralValue = 0;
         }
         slider.value = neutralValue;
-        state.currentEffectValues[slider.id] = neutralValue; // Atualiza o estado interno
+        state.currentEffectValues[slider.id] = neutralValue;
     });
 }
 
@@ -1395,8 +1327,6 @@ function moveSelectedElements(dx, dy) {
                     element.endX += dx;
                     element.endY += dy;
                 }
-                // Para retângulos, o x e y são o ponto de início, então basta mover
-                // para círculos, o x e y são o centro, basta mover
             }
         }
     });
@@ -1409,12 +1339,11 @@ function deleteSelectedElements() {
     state.selectedElements = [];
     saveState();
     redrawAll();
-    resetEffectSliders(); // Zera os sliders após deletar seleção
+    resetEffectSliders();
 }
 
 function copySelectedElements() {
     if (state.selectedElements.length === 0) return;
-    // Certifica-se de copiar também a propriedade 'effects'
     clipboard = state.selectedElements
         .map(id => findElementById(id))
         .filter(Boolean)
@@ -1439,10 +1368,8 @@ function pasteElements() {
         } else {
             newElement.x += pasteOffset;
             newElement.y += pasteOffset;
-            if (newElement.endX) newElement.endX += pasteOffset;
-            if (newElement.endY) newElement.endY += pasteOffset;
-            // Para retângulos, apenas move x/y (width/height são relativos)
-            // Para círculos, apenas move x/y (radius é fixo)
+            if (typeof newElement.endX !== 'undefined') newElement.endX += pasteOffset;
+            if (typeof newElement.endY !== 'undefined') newElement.endY += pasteOffset;
             state.composition.symbols.push(newElement);
         }
         newSelection.push(newElement.id);
@@ -1451,7 +1378,6 @@ function pasteElements() {
     state.selectedElements = newSelection;
     saveState();
     redrawAll();
-    // NOVO: Atualiza os sliders para os elementos colados
     if (state.selectedElements.length > 0) {
         const firstSelectedElement = findElementById(state.selectedElements[0]);
         updateEffectSlidersForSelection(firstSelectedElement);
@@ -1466,7 +1392,7 @@ function getElementBoundingBox(element) {
     if (!element) return null;
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
-    if (element.points) { // É um traço
+    if (element.points) {
         if (element.points.length === 0) return null;
         element.points.forEach(p => {
             minX = Math.min(minX, p.x);
@@ -1474,7 +1400,7 @@ function getElementBoundingBox(element) {
             maxX = Math.max(maxX, p.x);
             maxY = Math.max(maxY, p.y);
         });
-    } else { // É um símbolo
+    } else {
         const size = element.size || 10;
         if (element.type === 'glissando' || element.type === 'line') {
             minX = Math.min(element.x, element.endX);
@@ -1491,14 +1417,13 @@ function getElementBoundingBox(element) {
             minY = Math.min(element.y, element.y + element.height);
             maxX = Math.max(element.x, element.x + element.width);
             maxY = Math.max(element.y, element.y + element.height);
-        } else { // Para símbolos normais (staccato, percussion, etc.)
+        } else {
              minX = element.x - size / 2;
              minY = element.y - size / 2;
              maxX = element.x + size / 2;
              maxY = element.y + size / 2;
         }
     }
-    // Adiciona uma pequena margem para seleção mais fácil, especialmente para linhas finas
     const margin = 5;
     return { x: minX - margin, y: minY - margin, width: (maxX - minX) + 2 * margin, height: (maxY - minY) + 2 * margin };
 }
@@ -1526,8 +1451,6 @@ function drawSelectionIndicator(element) {
         ctx.lineWidth = 1.5;
         ctx.setLineDash([5, 5]);
         ctx.strokeRect(box.x - 5, box.y - 5, box.width + 10, box.height + 10);
-        
-        // Removido o desenho de pequenos ícones de efeito, pois a aparência do desenho em si já representa.
         ctx.restore();
     }
 }
@@ -1603,15 +1526,14 @@ function importProject(event) {
         try {
             const projectData = JSON.parse(e.target.result);
             if (projectData && Array.isArray(projectData.strokes) && Array.isArray(projectData.symbols)) {
-                // Ensure loaded elements have an effects array, or default to empty
-                projectData.strokes.forEach(s => s.effects = s.effects || []);
-                projectData.symbols.forEach(s => s.effects = s.effects || []);
+                projectData.strokes.forEach(s => s.effects = s.effects || []); //
+                projectData.symbols.forEach(s => s.effects = s.effects || []); //
 
                 state.composition = projectData;
-                state.selectedElements = []; // Limpa a seleção ao importar
+                state.selectedElements = [];
                 redrawAll();
                 saveState();
-                resetEffectSliders(); // Zera os sliders ao importar um novo projeto
+                resetEffectSliders();
             } else {
                 throw new Error("Formato de arquivo inválido.");
             }
@@ -1632,9 +1554,8 @@ function loadAutoSavedProject() {
             const savedComposition = JSON.parse(savedJson);
             if (savedComposition && (savedComposition.strokes.length > 0 || savedComposition.symbols.length > 0)) {
                 if (confirm("Encontramos um projeto salvo automaticamente. Deseja carregá-lo?")) {
-                    // Ensure loaded elements have an effects array, or default to empty
-                    savedComposition.strokes.forEach(s => s.effects = s.effects || []);
-                    savedComposition.symbols.forEach(s => s.effects = s.effects || []);
+                    savedComposition.strokes.forEach(s => s.effects = s.effects || []); //
+                    savedComposition.symbols.forEach(s => s.effects = s.effects || []); //
                     state.composition = savedComposition;
                 }
             }
@@ -1662,12 +1583,11 @@ function undo() {
     if (state.historyIndex > 0) {
         state.historyIndex--;
         state.composition = JSON.parse(JSON.stringify(state.history[state.historyIndex]));
-        // Garante que o array de efeitos seja restaurado
-        state.composition.strokes.forEach(s => s.effects = s.effects || []);
-        state.composition.symbols.forEach(s => s.effects = s.effects || []);
+        state.composition.strokes.forEach(s => s.effects = s.effects || []); //
+        state.composition.symbols.forEach(s => s.effects = s.effects || []); //
 
-        state.selectedElements = []; // Limpa a seleção ao desfazer/refazer
-        resetEffectSliders(); // Zera os sliders
+        state.selectedElements = [];
+        resetEffectSliders();
         localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(state.composition));
         redrawAll();
         updateUndoRedoButtons();
@@ -1679,12 +1599,11 @@ function redo() {
     if (state.historyIndex < state.history.length - 1) {
         state.historyIndex++;
         state.composition = JSON.parse(JSON.stringify(state.history[state.historyIndex]));
-        // Garante que o array de efeitos seja restaurado
-        state.composition.strokes.forEach(s => s.effects = s.effects || []);
-        state.composition.symbols.forEach(s => s.effects = s.effects || []);
+        state.composition.strokes.forEach(s => s.effects = s.effects || []); //
+        state.composition.symbols.forEach(s => s.effects = s.effects || []); //
 
-        state.selectedElements = []; // Limpa a seleção ao desfazer/refazer
-        resetEffectSliders(); // Zera os sliders
+        state.selectedElements = [];
+        resetEffectSliders();
         localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(state.composition));
         redrawAll();
         updateUndoRedoButtons();
@@ -1735,11 +1654,9 @@ function stopPlayback() {
 
     state.sourceNodes.forEach(node => {
         try { 
-            // Para OscillatorNodes e BufferSourceNodes, .stop() funciona
-            if (typeof node.stop === 'function') {
+            if (node instanceof OscillatorNode || node instanceof AudioBufferSourceNode) { //
                 node.stop(0); 
             }
-            // Para outros nós (gain, filter, etc.), apenas desconecta
             if (typeof node.disconnect === 'function') {
                 node.disconnect();
             }
@@ -1747,16 +1664,7 @@ function stopPlayback() {
             console.warn("Erro ao parar/desconectar nó de áudio:", e);
         }
     });
-    state.sourceNodes = []; // Limpa o array de nós para evitar referências antigas
-
-    if (state.audioCtx && state.audioCtx.state !== 'closed') {
-        // Não fechamos o AudioContext para permitir retomar a reprodução de onde parou.
-        // Apenas suspendemos se desejado, mas fechar o AudioContext completamente
-        // destruiria todos os nós e forçaria uma nova inicialização, o que não é ideal para pausa/play.
-        // Se quisermos preservar os nós para retomar instantaneamente, devemos apenas parar as fontes.
-        // Por agora, vou manter o close, mas é um ponto a considerar para otimização.
-        // state.audioCtx.close().then(() => state.audioCtx = null).catch(e => console.error("Erro ao fechar AudioContext:", e));
-    }
+    state.sourceNodes = [];
 
     cancelAnimationFrame(state.animationFrameId);
     updatePlaybackUI(false);
@@ -1765,21 +1673,17 @@ function stopPlayback() {
 function animatePlayhead() {
     if (!state.isPlaying || !state.audioCtx) return;
 
-    // Use o 'state.audioCtx.currentTime' no momento em que a reprodução *começou*
-    // para calcular o tempo decorrido de forma precisa.
     const audioContextStartTimeForCurrentPlay = state.audioCtx.currentTime;
-    const canvasStartPosInSeconds = state.playbackStartTime; // Onde o playhead estava quando iniciamos
+    const canvasStartPosInSeconds = state.playbackStartTime;
 
     function frame() {
         if (!state.isPlaying || !state.audioCtx) return;
 
-        // O tempo atual no áudio é o `playbackStartTime` guardado + tempo decorrido desde que o áudio foi iniciado
         const elapsedTimeSinceAudioStart = state.audioCtx.currentTime - audioContextStartTimeForCurrentPlay;
         const currentPosInSeconds = canvasStartPosInSeconds + elapsedTimeSinceAudioStart;
 
         if (currentPosInSeconds >= MAX_DURATION_SECONDS) {
             stopPlayback();
-            // Opcional: resetar playbackStartTime para 0 no final da pauta
             state.playbackStartTime = 0; 
             updatePlayheadPosition();
             return;
@@ -1789,11 +1693,10 @@ function animatePlayhead() {
         updatePlayheadPosition();
 
         const currentXInPixels = state.playbackStartTime * PIXELS_PER_SECOND;
-        // Rolagem automática para seguir o playhead
         if (currentXInPixels * state.zoomLevel > el.mainCanvasArea.scrollLeft + el.mainCanvasArea.clientWidth) {
-            el.mainCanvasArea.scrollLeft = (currentXInPixels * state.zoomLevel) - el.mainCanvasArea.clientWidth + 100; // +100px para margem
+            el.mainCanvasArea.scrollLeft = (currentXInPixels * state.zoomLevel) - el.mainCanvasArea.clientWidth + 100;
         } else if (currentXInPixels * state.zoomLevel < el.mainCanvasArea.scrollLeft) {
-            el.mainCanvasArea.scrollLeft = (currentXInPixels * state.zoomLevel) - 100; // -100px para margem
+            el.mainCanvasArea.scrollLeft = (currentXInPixels * state.zoomLevel) - 100;
         }
 
         state.animationFrameId = requestAnimationFrame(frame);
@@ -1801,10 +1704,9 @@ function animatePlayhead() {
     state.animationFrameId = requestAnimationFrame(frame);
 }
 
-// A função scheduleAllSounds agora aceita um parâmetro `offsetTime`
 function scheduleAllSounds(audioCtx, offsetTime = 0) {
     const now = audioCtx.currentTime;
-    state.sourceNodes = []; // Garante que sourceNodes está vazio antes de preencher
+    state.sourceNodes = [];
 
     const mainOut = audioCtx.createGain();
     mainOut.connect(audioCtx.destination); 
@@ -1819,103 +1721,73 @@ function scheduleAllSounds(audioCtx, offsetTime = 0) {
         const strokeStartTimeCanvas = minX / PIXELS_PER_SECOND;
         const strokeEndTimeCanvas = maxX / PIXELS_PER_SECOND;
 
-        // Calcula a duração total do som no canvas
-        let durationCanvas = strokeEndTimeCanvas - strokeStartTimeCanvas;
-        if (durationCanvas <= 0) {
-            durationCanvas = 0.05; // Duração mínima para evitar sons com duração zero
-        }
-
-        // Calcula o ponto de início do traço em relação ao tempo do AudioContext.
-        // `scheduledAudioStart` é o tempo absoluto no AudioContext em que o som deve começar.
         const scheduledAudioStart = now + (strokeStartTimeCanvas - offsetTime);
-
-        // Calcula o ponto de fim do traço em relação ao tempo do AudioContext.
         const scheduledAudioEnd = now + (strokeEndTimeCanvas - offsetTime);
 
-        // Se o som terminar antes do tempo atual do AudioContext (now) ou começar muito depois do limite, não agenda.
         if (scheduledAudioEnd < now || scheduledAudioStart > now + MAX_DURATION_SECONDS) {
             return;
         }
 
-        // Garante que o som não comece antes do "now" (tempo atual do AudioContext)
-        // Isso é crucial para cortes precisos quando se reinicia de um ponto.
         const actualScheduledStart = Math.max(now, scheduledAudioStart);
-        // Ajusta a duração se o som começar depois do ponto original agendado.
         const actualDuration = scheduledAudioEnd - actualScheduledStart;
 
         if (actualDuration <= 0) {
-            return; // Evita agendar sons com duração zero ou negativa
+            return;
         }
 
-        // Gera os valores de frequência para o traço
-        // Precisamos ajustar o trecho do freqValues para começar do `offsetTime`
-        const freqValues = new Float32Array(Math.ceil(actualDuration * 100)); // 100 samples por segundo
+        // CORREÇÃO: Lógica de freqValues para Strokes no scheduleAllSounds
+        const freqValues = new Float32Array(Math.ceil(actualDuration * 100));
         
-        let startInterpolationTime = strokeStartTimeCanvas; // O tempo no canvas onde o stroke realmente começa
-        if (scheduledAudioStart < now) { // Se o som já deveria ter começado
-            startInterpolationTime = offsetTime; // Começamos a interpolação a partir do offset
-        }
+        const startXForGeneration = (actualScheduledStart - now + offsetTime) * PIXELS_PER_SECOND;
 
         let currentPointIndex = 0;
-        // Encontrar o ponto inicial mais próximo ou anterior ao startInterpolationTime
-        while(currentPointIndex < stroke.points.length - 2 && stroke.points[currentPointIndex + 1].x / PIXELS_PER_SECOND < startInterpolationTime) {
+        while(currentPointIndex < stroke.points.length - 2 && stroke.points[currentPointIndex + 1].x < startXForGeneration) {
             currentPointIndex++;
         }
 
         for (let i = 0; i < freqValues.length; i++) {
-            const timeInCurrentSegment = i / 100;
-            // Posição X no canvas correspondente ao tempo atual do segmento a ser reproduzido
-            const xPosInCanvas = startInterpolationTime * PIXELS_PER_SECOND + timeInCurrentSegment * PIXELS_PER_SECOND;
+            const timeInSegment = i / 100;
+            const xPosForFreq = startXForGeneration + timeInSegment * PIXELS_PER_SECOND;
 
-            // Garante que o xPosInCanvas não exceda o fim do stroke original
-            if (xPosInCanvas > maxX) {
-                freqValues[i] = yToFrequency(stroke.points[stroke.points.length - 1].y); // Pega a última frequência
+            if (xPosForFreq > maxX) {
+                freqValues[i] = yToFrequency(stroke.points[stroke.points.length - 1].y);
                 continue;
             }
 
-            // Encontra o segmento de linha correto para interpolação
-            while(currentPointIndex < stroke.points.length - 2 && stroke.points[currentPointIndex + 1].x < xPosInCanvas) {
+            while(currentPointIndex < stroke.points.length - 2 && stroke.points[currentPointIndex + 1].x < xPosForFreq) {
                 currentPointIndex++;
             }
             const p1 = stroke.points[currentPointIndex];
-            const p2 = stroke.points[currentPointIndex + 1] || p1; // Se for o último ponto, usa p1
+            const p2 = stroke.points[currentPointIndex + 1] || p1;
 
-            // Interpolação linear da frequência entre p1 e p2
-            const segmentProgress = (p2.x - p1.x === 0) ? 0 : (xPosInCanvas - p1.x) / (p2.x - p1.x);
+            const segmentProgress = (p2.x - p1.x === 0) ? 0 : (xPosForFreq - p1.x) / (p2.x - p1.x);
             const interpolatedY = p1.y + (p2.y - p1.y) * segmentProgress;
             freqValues[i] = yToFrequency(interpolatedY);
         }
-        // FIM DA MUDANÇA CRÍTICA AQUI (freqValues)
 
-        // Calcula o volume inicial e pan com base na espessura e posição X
         const vol = 0.1 + (stroke.lineWidth / 50) * 0.4;
         const pan = xToPan(minX); 
 
-        // Cria o tom com todos os parâmetros, incluindo o elemento para os efeitos
         createTone(audioCtx, {
-            element: stroke, // Passa o elemento completo para que os efeitos sejam lidos
+            element: stroke,
             type: stroke.timbre,
-            startTime: actualScheduledStart, // Usa o tempo de início ajustado
-            endTime: actualScheduledStart + actualDuration, // Usa a duração ajustada
-            freqValues: freqValues, // Usa os freqValues ajustados
+            startTime: actualScheduledStart,
+            endTime: actualScheduledStart + actualDuration,
+            freqValues: freqValues,
             vol: vol,
             pan: pan,
-            xStart: minX, // Posição X inicial no canvas (para referência visual/pan)
-            xEnd: maxX,   // Posição X final no canvas
-            initialY: stroke.points[0].y, // Posição Y inicial (para referência de altura/frequência)
+            xStart: minX,
+            xEnd: maxX,
+            initialY: stroke.points[0].y,
         }, mainOut);
     });
 
     state.composition.symbols.forEach(s => {
-        const symbolStartTimeCanvas = s.x / PIXELS_PER_SECOND;
+        const symbolTime = s.x / PIXELS_PER_SECOND;
 
-        // Calcula o tempo de início do símbolo em relação ao AudioContext.currentTime,
-        // mas subtrai o offsetTime para começar a partir da posição desejada.
-        const scheduledTime = now + Math.max(0, symbolStartTimeCanvas - offsetTime);
+        const scheduledTime = now + Math.max(0, symbolTime - offsetTime);
 
-        // Para símbolos, a duração é fixa ou calculada por eles mesmos.
-        // Se um símbolo começa antes do offset, ele é ignorado.
-        if (symbolStartTimeCanvas < offsetTime || scheduledTime > now + MAX_DURATION_SECONDS) {
+        if (symbolTime < offsetTime || scheduledTime > now + MAX_DURATION_SECONDS) {
             return;
         }
 
@@ -1928,9 +1800,8 @@ function scheduleAllSounds(audioCtx, offsetTime = 0) {
             case 'percussion': createTone(audioCtx, { element: s, type: 'noise', startTime: scheduledTime, endTime: scheduledTime + 0.1, vol, pan, xStart: s.x, initialY: s.y }, mainOut); break;
             case 'arpeggio':
                 [1, 5/4, 3/2, 2].forEach((interval, i) => {
-                    // Ajusta o agendamento de cada nota do arpejo também
-                    const noteScheduledTime = now + Math.max(0, (symbolStartTimeCanvas + i * 0.05) - offsetTime);
-                    if (noteScheduledTime > now + MAX_DURATION_SECONDS) return; // Evita agendar notas muito à frente
+                    const noteScheduledTime = now + Math.max(0, (symbolTime + i * 0.05) - offsetTime);
+                    if (noteScheduledTime > now + MAX_DURATION_SECONDS) return;
                     createTone(audioCtx, { element: s, type: 'triangle', startTime: noteScheduledTime, endTime: noteScheduledTime + 0.1, startFreq: freq * interval, vol: vol*0.8, pan, xStart: s.x, initialY: s.y }, mainOut);
                 });
                 break;
@@ -1938,26 +1809,28 @@ function scheduleAllSounds(audioCtx, offsetTime = 0) {
                 const glissStartTimeCanvas = s.x / PIXELS_PER_SECOND;
                 const glissEndTimeCanvas = s.endX / PIXELS_PER_SECOND;
 
-                // Garante que o glissando comece no mínimo no offsetTime
                 const actualGlissStartTime = Math.max(glissStartTimeCanvas, offsetTime);
-                const actualGlissEndTime = Math.max(glissEndTimeCanvas, offsetTime); // Glissando não pode terminar antes do offset
+                const actualGlissEndTime = glissEndTimeCanvas;
 
                 const scheduledGlissStart = now + (actualGlissStartTime - offsetTime);
                 const scheduledGlissEnd = now + (actualGlissEndTime - offsetTime);
                 const glissDuration = scheduledGlissEnd - scheduledGlissStart;
 
                 if (glissDuration > 0) {
-                    // Para o glissando, a frequência inicial e final podem precisar de ajuste
-                    // se ele for "cortado" pelo offsetTime.
                     let startFreq = yToFrequency(s.y);
                     let endFreq = yToFrequency(s.endY);
 
-                    // Se o glissando começa depois do offset (ou seja, offsetTime > glissStartTimeCanvas),
-                    // precisamos interpolar a frequência no ponto de início real.
-                    if (offsetTime > glissStartTimeCanvas) {
-                        const totalCanvasDuration = glissEndTimeCanvas - glissStartTimeCanvas;
-                        const progressAtOffset = (offsetTime - glissStartTimeCanvas) / totalCanvasDuration;
-                        startFreq = yToFrequency(s.y + (s.endY - s.y) * progressAtOffset);
+                    // CORREÇÃO: Interpolação de startFreq e endFreq para glissando com offset
+                    const originalGlissTotalDuration = glissEndTimeCanvas - glissStartTimeCanvas;
+                    if (originalGlissTotalDuration > 0) { // Evita divisão por zero
+                        if (offsetTime > glissStartTimeCanvas) {
+                            const progressAtOffset = (offsetTime - glissStartTimeCanvas) / originalGlissTotalDuration;
+                            startFreq = yToFrequency(s.y + (s.endY - s.y) * progressAtOffset);
+                        }
+                        if (scheduledGlissEnd > now + MAX_DURATION_SECONDS) {
+                             const progressAtEndLimit = ( (now + MAX_DURATION_SECONDS) - (glissStartTimeCanvas - offsetTime + now) ) / originalGlissTotalDuration;
+                             endFreq = yToFrequency(s.y + (s.endY - s.y) * progressAtEndLimit);
+                        }
                     }
 
                     createTone(audioCtx, { element: s, type: s.timbre, startTime: scheduledGlissStart, endTime: scheduledGlissEnd, startFreq: startFreq, endFreq: endFreq, vol, pan, xStart: s.x, xEnd: s.endX, initialY: s.y }, mainOut);
@@ -1965,7 +1838,7 @@ function scheduleAllSounds(audioCtx, offsetTime = 0) {
                 break;
             case 'tremolo': 
                 for (let t = 0; t < 0.5; t += 0.05) {
-                    const tremoloScheduledTime = now + Math.max(0, (symbolStartTimeCanvas + t) - offsetTime);
+                    const tremoloScheduledTime = now + Math.max(0, (symbolTime + t) - offsetTime);
                     if (tremoloScheduledTime > now + MAX_DURATION_SECONDS) return;
                     createTone(audioCtx, { element: s, type: 'sine', startTime: tremoloScheduledTime, endTime: tremoloScheduledTime + 0.1, startFreq: freq, vol: vol * 0.8, pan, xStart: s.x, initialY: s.y }, mainOut);
                 }
@@ -1973,7 +1846,7 @@ function scheduleAllSounds(audioCtx, offsetTime = 0) {
             case 'granular':
                 for (let i = 0; i < 20; i++) {
                      const randomOffset = Math.random() * 0.5;
-                     const granularScheduledTime = now + Math.max(0, (symbolStartTimeCanvas + randomOffset) - offsetTime);
+                     const granularScheduledTime = now + Math.max(0, (symbolTime + randomOffset) - offsetTime);
                      if (granularScheduledTime > now + MAX_DURATION_SECONDS) return;
                      createTone(audioCtx, { element: s, type: 'sine', startTime: granularScheduledTime, endTime: granularScheduledTime + Math.random() * 0.1 + 0.05, startFreq: yToFrequency(s.y - s.size / 2 + Math.random() * s.size), vol: Math.random() * vol, pan: pan - 0.2 + Math.random() * 0.4, xStart: s.x, initialY: s.y }, mainOut);
                 }
@@ -1987,47 +1860,52 @@ function scheduleAllSounds(audioCtx, offsetTime = 0) {
     });
 }
 
-// createTone agora recebe o elemento completo para acessar seus efeitos
 function createTone(audioCtx, opts, mainOut) {
     let osc;
     const duration = opts.endTime - opts.startTime;
     if (duration <= 0) return;
 
-    // Array para coletar todos os nós de áudio que precisam ser iniciados e parados
-    const nodesToStartStop = [];
+    const sourcesToStop = [];
 
-    // Criação do oscilador/fonte de som baseado no timbre
+    // Define a duração extra para efeitos como reverb e delay
+    const extraEffectTailTime = 1.0; // 1 segundo extra para o decaimento dos efeitos
+    let finalStopTime = opts.endTime;
+
+    // Se o elemento tem efeitos de reverb ou delay, estende o tempo de parada da fonte.
+    // Isso é crucial para que o decaimento do efeito seja ouvido.
+    const hasReverbOrDelay = opts.element.effects.some(e => e.type === 'reverbZone' || e.type === 'delayZone');
+    if (hasReverbOrDelay) {
+        finalStopTime = opts.endTime + extraEffectTailTime;
+    }
+
+
     switch (opts.type) {
         case 'noise':
             osc = audioCtx.createBufferSource();
-            // A duração do buffer precisa ser suficiente para o som, mesmo que cortado
-            const bufferDuration = Math.max(duration + 0.1, 0.5); // Garante um buffer mínimo
+            const bufferDuration = Math.max(duration + 0.1, 0.5);
             const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * bufferDuration, audioCtx.sampleRate);
             const data = buffer.getChannelData(0);
             for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
             osc.buffer = buffer;
             osc.loop = false;
-            nodesToStartStop.push(osc); // Adiciona o BufferSourceNode
+            sourcesToStop.push(osc);
             break;
         case 'fm':
             const carrier = audioCtx.createOscillator(); carrier.type = 'sine';
             const modulator = audioCtx.createOscillator(); modulator.type = 'square';
             
-            // Apply frequency modulation over time if freqValues exist
             if(opts.freqValues) {
-                // Modulator frequency can be based on carrier's average or a fixed ratio
                 modulator.frequency.setValueAtTime( (opts.freqValues.reduce((a, b) => a + b) / opts.freqValues.length) * 1.5 || 300, audioCtx.currentTime); 
             } else {
                 modulator.frequency.setValueAtTime( (opts.startFreq || 200) * 1.5, audioCtx.currentTime);
             }
 
             const modGain = audioCtx.createGain(); 
-            // Modulator gain (detuning depth) can also be dynamic if needed, but fixed for now
             modGain.gain.setValueAtTime( (opts.startFreq || 200) * 0.75, audioCtx.currentTime);
             modulator.connect(modGain).connect(carrier.frequency);
             osc = audioCtx.createGain(); carrier.connect(osc); 
             
-            nodesToStartStop.push(modulator, carrier); // Adiciona ambos osciladores
+            sourcesToStop.push(modulator, carrier);
             break;
         case 'organ': 
             osc = audioCtx.createGain(); 
@@ -2051,12 +1929,12 @@ function createTone(audioCtx, opts, mainOut) {
             const gain2 = audioCtx.createGain(); gain2.gain.value = 0.3;
             harmonic2.connect(gain2).connect(osc);
 
-            nodesToStartStop.push(fundamental, harmonic1, harmonic2); // Adiciona todos os osciladores
+            sourcesToStop.push(fundamental, harmonic1, harmonic2);
             break;
-        case 'pulse': // O timbre 'pulse' não tinha uma implementação específica no switch, adicionei uma simples
+        case 'pulse':
             osc = audioCtx.createOscillator();
-            osc.type = 'square'; // Simplesmente um quadrado por enquanto para "pulse"
-            nodesToStartStop.push(osc);
+            osc.type = 'square';
+            sourcesToStop.push(osc);
             break;
         case 'sine':
         case 'square':
@@ -2065,15 +1943,11 @@ function createTone(audioCtx, opts, mainOut) {
         default: 
             osc = audioCtx.createOscillator();
             osc.type = opts.type;
-            nodesToStartStop.push(osc); // Adiciona o oscilador padrão
+            sourcesToStop.push(osc);
             break;
     }
 
-    // Configuração de frequência para osciladores padrão
-    // Esta parte do código só se aplica a OscillatorNodes que têm a propriedade 'frequency'
-    // E DEVE VIR ANTES DE QUALQUER CONEXÃO DO 'osc' QUE MUDE SEU TIPO (ex: osc = pluckGain)
-    // Para garantir que o oscilador REAL seja configurado.
-    if (nodesToStartStop.includes(osc) && osc instanceof OscillatorNode) { // Verifica se 'osc' ainda é o OscillatorNode original
+    if (osc instanceof OscillatorNode) {
         if (opts.freqValues) {
             osc.frequency.setValueCurveAtTime(opts.freqValues, opts.startTime, duration);
         } else if (opts.startFreq) {
@@ -2082,104 +1956,75 @@ function createTone(audioCtx, opts, mainOut) {
         }
     }
 
-    // Cria o GainNode principal para o som
     const mainGain = audioCtx.createGain(); 
-    mainGain.gain.setValueAtTime(0, opts.startTime);
-    mainGain.gain.linearRampToValueAtTime(opts.vol, opts.startTime + 0.01); // Ataque
-    mainGain.gain.setValueAtTime(opts.vol, opts.endTime - 0.01);
-    mainGain.gain.linearRampToValueAtTime(0, opts.endTime); // Release
+    // CORREÇÃO: Envelope de ganho ajustado para sustentar o som
+    const attackTime = 0.01;
+    const releaseTime = 0.05; // Ajuste este valor se o som ainda decair muito rápido
 
-    // Conecta a fonte do som (osc) ao mainGain, a menos que o timbre seja AM (já conectado)
-    if (opts.type !== 'am' && typeof osc.connect === 'function') { 
+    mainGain.gain.setValueAtTime(0.0001, opts.startTime);
+    mainGain.gain.exponentialRampToValueAtTime(opts.vol, opts.startTime + attackTime);
+    // Mantém o volume constante até o início do release
+    mainGain.gain.setValueAtTime(opts.vol, opts.endTime - releaseTime);
+    mainGain.gain.exponentialRampToValueAtTime(0.0001, opts.endTime);
+
+    if (opts.type !== 'fm' && opts.type !== 'organ' && typeof osc.connect === 'function') {
         osc.connect(mainGain);
+    } else if (opts.type === 'fm' && osc instanceof GainNode) {
+         osc.connect(mainGain);
+    } else if (opts.type === 'organ' && osc instanceof GainNode) {
+         osc.connect(mainGain);
     }
 
-    let currentNode = mainGain; // O mainGain agora é o primeiro nó no pipeline de efeitos
+    let currentNode = mainGain;
 
-    // Aplicar efeitos armazenados no elemento (opts.element)
     if (opts.element && opts.element.effects && opts.element.effects.length > 0) {
-        // Ordena os efeitos para garantir um pipeline lógico
-        // Ex: Filters -> Modulation -> Dynamics -> Spacial -> Reverb/Delay (como send/return)
         const effectOrder = [
-            'lowpassFilter', 'highpassFilter', 'bandpassFilter', 'notchFilter', 'bassEq', 'midEq', 'trebleEq', // EQ e Filtros
-            'phaser', 'flanger', 'chorus', 'vibratoZone', 'tremoloAmplitude', 'wah', // Modulação
-            'distortion', 'compressor', // Dinâmica (gain já tratado no mainGain)
-            // Reverb e Delay são tratados em paralelo com o sinal seco, então precisam de lógica especial
+            'lowpassFilter', 'highpassFilter', 'bandpassFilter', 'notchFilter', 'bassEq', 'midEq', 'trebleEq',
+            'phaser', 'flanger', 'chorus', 'vibratoZone', 'tremoloAmplitude', 'wah',
+            'distortion', 'compressor',
         ];
 
-        // Filtra e ordena os efeitos
         const orderedEffects = effectOrder
             .map(type => opts.element.effects.find(eff => eff.type === type))
-            .filter(Boolean); // Remove nulls/undefineds
-
-        // Cria uma cópia do currentNode para o sinal "seco" que será mesclado no final
-        // Isso é crucial para efeitos como Reverb e Delay que operam em paralelo.
-        // Para outros efeitos em série, o `currentNode` se propaga.
-        const drySignalBypassNode = audioCtx.createGain();
-        drySignalBypassNode.gain.value = 1.0; // Inicia com ganho total
-        currentNode.connect(drySignalBypassNode); // Conecta o sinal atual ao bypass
+            .filter(Boolean);
 
         orderedEffects.forEach(effect => {
             let effectNode;
-            const params = effect.params; // Parâmetros específicos do efeito
+            const params = effect.params;
 
             switch (effect.type) {
                 case 'lowpassFilter':
-                    effectNode = audioCtx.createBiquadFilter();
-                    effectNode.type = 'lowpass';
-                    effectNode.frequency.value = params.frequency || FREQ_MAX;
-                    effectNode.Q.value = params.Q || 1;
-                    currentNode.connect(effectNode);
-                    currentNode = effectNode;
-                    break;
                 case 'highpassFilter':
-                    effectNode = audioCtx.createBiquadFilter();
-                    effectNode.type = 'highpass';
-                    effectNode.frequency.value = params.frequency || FREQ_MIN;
-                    effectNode.Q.value = params.Q || 1;
-                    currentNode.connect(effectNode);
-                    currentNode = effectNode;
-                    break;
                 case 'bandpassFilter':
-                    effectNode = audioCtx.createBiquadFilter();
-                    effectNode.type = 'bandpass';
-                    effectNode.frequency.value = params.frequency || (FREQ_MIN + FREQ_MAX) / 2;
-                    effectNode.Q.value = params.Q || 1;
-                    currentNode.connect(effectNode);
-                    currentNode = effectNode;
-                    break;
                 case 'notchFilter':
+                case 'bassEq':
+                case 'midEq':
+                case 'trebleEq':
                     effectNode = audioCtx.createBiquadFilter();
-                    effectNode.type = 'notch';
-                    effectNode.frequency.value = params.frequency || (FREQ_MIN + FREQ_MAX) / 2;
-                    effectNode.Q.value = params.Q || 1;
+                    effectNode.type = effect.type === 'bassEq' ? 'lowshelf' : 
+                                      effect.type === 'midEq' ? 'peaking' :
+                                      effect.type === 'trebleEq' ? 'highshelf' : effect.type.replace('Filter', '');
+                    effectNode.frequency.value = params.frequency || ((FREQ_MIN + FREQ_MAX) / 2);
+                    if (typeof params.Q !== 'undefined') effectNode.Q.value = params.Q;
+                    if (typeof params.gain !== 'undefined') effectNode.gain.value = params.gain;
                     currentNode.connect(effectNode);
                     currentNode = effectNode;
                     break;
-                case 'gain': // Se houver um "gain" adicional no pipeline
+                case 'gain':
                     effectNode = audioCtx.createGain();
                     effectNode.gain.value = params.gain || 1.0;
                     currentNode.connect(effectNode);
                     currentNode = effectNode;
                     break;
                 case 'vibratoZone':
-                    let targetOscillatorFreqParam = null;
-                    // Tenta encontrar o parâmetro de frequência do oscilador principal ou de um sub-oscilador
-                    // Apenas aplica vibrato se o oscilador principal for um OscillatorNode
-                    if (osc instanceof OscillatorNode) { 
-                        targetOscillatorFreqParam = osc.frequency;
-                    } 
-                    // Removido o caso de nodesToStartStop[0] para evitar vibrato em timbres complexos de forma errada
-                    // se o primeiro nó não for o oscilador de frequência principal.
-
-                    if (targetOscillatorFreqParam) {
+                    if (osc instanceof OscillatorNode) {
                         const vibratoLFO = audioCtx.createOscillator();
                         vibratoLFO.type = 'sine';
                         vibratoLFO.frequency.value = params.rate || 5; 
                         const vibratoGain = audioCtx.createGain();
                         vibratoGain.gain.value = params.depth || 50; 
-                        vibratoLFO.connect(vibratoGain).connect(targetOscillatorFreqParam);
-                        nodesToStartStop.push(vibratoLFO); // Adiciona o LFO para ser iniciado/parado
+                        vibratoLFO.connect(vibratoGain).connect(osc.frequency);
+                        sourcesToStop.push(vibratoLFO);
                     }
                     break;
                 case 'phaser': 
@@ -2193,7 +2038,7 @@ function createTone(audioCtx, opts, mainOut) {
                     phaserLFO.connect(phaserGain).connect(effectNode.frequency);
                     currentNode.connect(effectNode);
                     currentNode = effectNode;
-                    nodesToStartStop.push(phaserLFO);
+                    sourcesToStop.push(phaserLFO);
                     break;
                 case 'flanger': 
                     effectNode = audioCtx.createDelay(0.05);
@@ -2207,19 +2052,16 @@ function createTone(audioCtx, opts, mainOut) {
                     const flangerFeedback = audioCtx.createGain();
                     flangerFeedback.gain.value = params.feedback || 0.8;
 
-                    // NOTA: Para flanger/chorus, o mix dry/wet é um pouco mais complexo se for para
-                    // um "insert" no pipeline. A abordagem de send/return é mais comum.
-                    // Para simplificar e manter a cadeia, vamos misturar aqui.
-                    const flangerMerger = audioCtx.createChannelMerger(1);
-                    const flangerWetMix = audioCtx.createGain(); flangerWetMix.gain.value = params.mix || 0.5;
-                    const flangerDryMix = audioCtx.createGain(); flangerDryMix.gain.value = 1 - (params.mix || 0.5);
+                    const flangerDry = audioCtx.createGain();
+                    flangerDry.gain.value = 1 - (params.mix || 0.5);
+                    currentNode.connect(flangerDry).connect(currentNode);
 
-                    currentNode.connect(flangerDryMix).connect(flangerMerger);
-                    currentNode.connect(effectNode).connect(flangerFeedback).connect(effectNode); // Loop de feedback
-                    effectNode.connect(flangerWetMix).connect(flangerMerger);
-                    
-                    currentNode = flangerMerger;
-                    nodesToStartStop.push(flangerLFO);
+                    const flangerWet = audioCtx.createGain();
+                    flangerWet.gain.value = params.mix || 0.5;
+                    currentNode.connect(effectNode).connect(flangerFeedback).connect(effectNode);
+                    effectNode.connect(flangerWet).connect(currentNode);
+
+                    sourcesToStop.push(flangerLFO);
                     break;
                 case 'chorus': 
                     const chorusDelay1 = audioCtx.createDelay(0.1);
@@ -2239,17 +2081,17 @@ function createTone(audioCtx, opts, mainOut) {
                     chorusLFO2_Gain.gain.value = (params.delay || 0.02) * 0.8;
                     chorusLFO2.connect(chorusLFO2_Gain).connect(chorusDelay2.delayTime);
 
-                    const chorusMerger = audioCtx.createChannelMerger(1);
-                    const chorusWetMix1 = audioCtx.createGain(); chorusWetMix1.gain.value = (params.mix || 0.5) / 2;
-                    const chorusWetMix2 = audioCtx.createGain(); chorusWetMix2.gain.value = (params.mix || 0.5) / 2;
-                    const chorusDryMix = audioCtx.createGain(); chorusDryMix.gain.value = 1 - (params.mix || 0.5);
+                    const chorusDry = audioCtx.createGain();
+                    chorusDry.gain.value = 1 - (params.mix || 0.5);
+                    currentNode.connect(chorusDry).connect(currentNode);
 
-                    currentNode.connect(chorusDryMix).connect(chorusMerger);
-                    currentNode.connect(chorusDelay1).connect(chorusWetMix1).connect(chorusMerger);
-                    currentNode.connect(chorusDelay2).connect(chorusWetMix2).connect(chorusMerger);
+                    const chorusWet1 = audioCtx.createGain(); chorusWet1.gain.value = (params.mix || 0.5) / 2;
+                    const chorusWet2 = audioCtx.createGain(); chorusWet2.gain.value = (params.mix || 0.5) / 2;
 
-                    currentNode = chorusMerger;
-                    nodesToStartStop.push(chorusLFO1, chorusLFO2);
+                    currentNode.connect(chorusDelay1).connect(chorusWet1).connect(currentNode);
+                    currentNode.connect(chorusDelay2).connect(chorusWet2).connect(currentNode);
+
+                    sourcesToStop.push(chorusLFO1, chorusLFO2);
                     break;
                 case 'distortion':
                     effectNode = audioCtx.createWaveShaper();
@@ -2279,7 +2121,7 @@ function createTone(audioCtx, opts, mainOut) {
                     tremoloAmpGainNode.connect(effectNode.gain); 
                     currentNode.connect(effectNode);
                     currentNode = effectNode;
-                    nodesToStartStop.push(tremoloAmpLFO);
+                    sourcesToStop.push(tremoloAmpLFO);
                     break;
                 case 'wah':
                     effectNode = audioCtx.createBiquadFilter();
@@ -2294,45 +2136,15 @@ function createTone(audioCtx, opts, mainOut) {
                     effectNode.frequency.value = params.baseFreq || 500; 
                     currentNode.connect(effectNode);
                     currentNode = effectNode;
-                    nodesToStartStop.push(wahLFO);
-                    break;
-                case 'bassEq':
-                    effectNode = audioCtx.createBiquadFilter();
-                    effectNode.type = 'lowshelf';
-                    effectNode.frequency.value = params.frequency || 100;
-                    effectNode.gain.value = params.gain || 0; 
-                    currentNode.connect(effectNode);
-                    currentNode = effectNode;
-                    break;
-                case 'midEq':
-                    effectNode = audioCtx.createBiquadFilter();
-                    effectNode.type = 'peaking';
-                    effectNode.frequency.value = params.frequency || 1000;
-                    effectNode.Q.value = params.Q || 1;
-                    effectNode.gain.value = params.gain || 0; 
-                    currentNode.connect(effectNode);
-                    currentNode = effectNode;
-                    break;
-                case 'trebleEq':
-                    effectNode = audioCtx.createBiquadFilter();
-                    effectNode.type = 'highshelf';
-                    effectNode.frequency.value = params.frequency || 3000;
-                    effectNode.gain.value = params.gain || 0; 
-                    currentNode.connect(effectNode);
-                    currentNode = effectNode;
+                    sourcesToStop.push(wahLFO);
                     break;
             }
         });
 
         // TRATAMENTO FINAL DE REVERB E DELAY (CONEXÕES EM PARALELO)
-        // Estes devem ser aplicados após todos os outros efeitos "em série".
-        // O sinal `drySignalBypassNode` contém o áudio original antes de ser processado pelos efeitos em série.
-        // O `currentNode` contém o áudio *após* os efeitos em série.
-
-        // Delay (send/return)
         const delayEffect = opts.element.effects.find(eff => eff.type === 'delayZone');
         if (delayEffect && delayEffect.params.mix > 0) {
-            const delayNode = audioCtx.createDelay(1.0); // Max delay 1 sec
+            const delayNode = audioCtx.createDelay(1.0);
             const feedbackNode = audioCtx.createGain();
             const wetGainDelay = audioCtx.createGain();
             
@@ -2340,19 +2152,11 @@ function createTone(audioCtx, opts, mainOut) {
             feedbackNode.gain.value = delayEffect.params.feedback || 0.3;
             wetGainDelay.gain.value = delayEffect.params.mix || 0.5;
 
-            // Envia o sinal processado (currentNode) para o delay
             currentNode.connect(delayNode); 
-            delayNode.connect(feedbackNode).connect(delayNode); // Loop de feedback
-            delayNode.connect(wetGainDelay); // Saída do delay
-
-            // Mistura o sinal wet de volta ao currentNode (sinal dry já está nele se for um efeito em série)
-            // Se o Delay for o *último* efeito antes do panner, ele se conecta ao panner.
-            // Se houver outros efeitos depois, o resultado do mix deve ser o novo currentNode.
-            // Para simplicidade e eficácia como send/return, ele se conecta de volta ao currentNode.
-            wetGainDelay.connect(currentNode); 
+            delayNode.connect(feedbackNode).connect(delayNode);
+            delayNode.connect(wetGainDelay).connect(currentNode);
         }
 
-        // Reverb (send/return)
         const reverbEffect = opts.element.effects.find(eff => eff.type === 'reverbZone');
         if (reverbEffect && reverbEffect.params.mix > 0) {
             const reverbNode = audioCtx.createConvolver();
@@ -2360,34 +2164,27 @@ function createTone(audioCtx, opts, mainOut) {
             const reverbWetGain = audioCtx.createGain();
             reverbWetGain.gain.value = reverbEffect.params.mix || 0.3;
 
-            // Envia o sinal processado (currentNode) para o reverb
             currentNode.connect(reverbNode); 
-            reverbNode.connect(reverbWetGain); 
-
-            // Mistura o sinal wet de volta ao currentNode
-            reverbWetGain.connect(currentNode); 
+            reverbNode.connect(reverbWetGain).connect(currentNode);
         }
     }
     
-    // Conecta o último nó do pipeline de efeitos ao panner
     const panner = audioCtx.createStereoPanner();
     panner.pan.setValueAtTime(opts.pan, opts.startTime);
     currentNode.connect(panner);
 
-    // E o panner ao mainOut geral
     panner.connect(mainOut);
 
-    // Inicia e para todos os nós que são fontes de áudio
-    nodesToStartStop.forEach(node => {
+    sourcesToStop.forEach(node => {
         if (typeof node.start === 'function' && typeof node.stop === 'function') {
+            // CORREÇÃO: Usa finalStopTime para a parada dos nós de fonte
             node.start(opts.startTime);
-            node.stop(opts.endTime);
+            node.stop(finalStopTime);
         }
-        state.sourceNodes.push(node); // Adiciona todos os nós para serem parados posteriormente
+        state.sourceNodes.push(node);
     });
 }
 
-// Função auxiliar para a curva de distorção (WaveShaperNode)
 function makeDistortionCurve(amount) {
     let k = typeof amount === 'number' ? amount : 50;
     let n_samples = 44100;
@@ -2434,22 +2231,16 @@ function resetView() {
 }
 
 function yToFrequency(y) {
-    // Normaliza a posição Y do canvas (0 a 1, onde 0 é topo, 1 é base)
-    // Inverte o Y porque no canvas 0 é o topo e para frequência 0 é mais grave (embaixo)
     const normalizedY = 1 - Math.max(0, Math.min(1, y / el.canvas.height));
-    // Mapeia logaritmicamente a frequência
     return FREQ_MIN * Math.pow(FREQ_MAX / FREQ_MIN, normalizedY);
 }
 
 function yFromFrequency(freq) {
-    // Mapeia a frequência de volta para a posição Y do canvas
     const normalizedFreq = Math.log(freq / FREQ_MIN) / Math.log(FREQ_MAX / FREQ_MIN);
     return el.canvas.height * (1 - normalizedFreq);
 }
 
 function xToPan(x) { 
-    // Mapeia a posição X do canvas para um valor de pan de -1 (esquerda) a 1 (direita)
-    // Considerando o centro como 0
     return (x / el.canvas.width) * 2 - 1; 
 }
 
@@ -2472,16 +2263,12 @@ function setActiveTool(toolName) {
     state.circleCenter = null; 
     state.rectangleStart = null; 
     
-    // Remove 'active' de todas as ferramentas de desenho/interação
     Object.values(el.tools).forEach(btn => btn?.classList.remove('active'));
-    // Os sliders de efeito não têm estado 'active' no mesmo sentido, então não precisam ser resetados aqui.
 
-    // Adiciona 'active' à ferramenta clicada
     if (el.tools[toolName]) {
         el.tools[toolName].classList.add('active');
     }
 
-    // Gerencia o cursor do canvas
     let cursor = 'auto'; 
     if (toolName === 'select') cursor = 'pointer';
     else if (toolName === 'hand') cursor = 'grab';
@@ -2548,7 +2335,6 @@ function updateExportSelectionVisuals() {
 function exportJpg() {
     try {
         const tempCanvas = d.createElement('canvas');
-        // Para JPG/PDF, desenhe o canvas na escala original para melhor qualidade
         tempCanvas.width = el.canvas.width;
         tempCanvas.height = el.canvas.height;
         const tempCtx = tempCanvas.getContext('2d');
@@ -2556,19 +2342,17 @@ function exportJpg() {
         tempCtx.fillStyle = getComputedStyle(d.documentElement).getPropertyValue('--bg-dark').trim();
         tempCtx.fillRect(0, 0, tempCanvas.width, tempCtx.height);
 
-        // Desenha todos os elementos na escala original (sem o zoom do display)
-        // Isso requer uma recriação simplificada do redrawAll sem o state.zoomLevel
         tempCtx.save();
         state.composition.strokes.forEach(stroke => {
             if (stroke.points.length < 2) return;
-            drawBaseElement(stroke, tempCtx); // Desenha sem efeitos visuais complexos para exportação
+            drawBaseElement(stroke, tempCtx);
         });
         state.composition.symbols.forEach(s => drawBaseElement(s, tempCtx));
         tempCtx.restore();
 
-        const imgData = tempCanvas.toDataURL('image/jpeg', 0.8); // Qualidade JPG
+        const imgData = tempCanvas.toDataURL('image/jpeg', 0.8);
         const link = d.createElement('a');
-        link.href = imgData; // Não precisa de URL.createObjectURL para dataURL
+        link.href = imgData;
         link.download = `music-drawing-${Date.now()}.jpg`;
         link.click();
     } catch (e) {
@@ -2585,7 +2369,6 @@ function exportPdf() {
         tempCtx.fillStyle = getComputedStyle(d.documentElement).getPropertyValue('--bg-dark').trim();
         tempCtx.fillRect(0, 0, tempCanvas.width, tempCtx.height);
         
-        // Desenha todos os elementos na escala original
         tempCtx.save();
         state.composition.strokes.forEach(stroke => {
             if (stroke.points.length < 2) return;
@@ -2625,7 +2408,7 @@ async function exportWav() {
     const offlineCtx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(2, 44100 * duration, 44100);
 
     const scheduleForExport = (audioCtx) => {
-        const now = 0; // O tempo inicial no OfflineAudioContext é 0
+        const now = 0;
 
         const mainOut = audioCtx.createGain();
         mainOut.connect(audioCtx.destination);
@@ -2637,49 +2420,55 @@ async function exportWav() {
             const minX = Math.min(...xCoords);
             const maxX = Math.max(...xCoords);
 
-            const strokeStart = minX / PIXELS_PER_SECOND;
-            const strokeEnd = maxX / PIXELS_PER_SECOND;
+            const strokeStartCanvas = minX / PIXELS_PER_SECOND;
+            const strokeEndCanvas = maxX / PIXELS_PER_SECOND;
 
-            // Ajusta o tempo do traço para o contexto de exportação
-            if (strokeEnd < exportStartTime || strokeStart > exportEndTime) return;
+            const effectiveStartCanvas = Math.max(strokeStartCanvas, exportStartTime);
+            const effectiveEndCanvas = Math.min(strokeEndCanvas, exportEndTime);
 
-            // Calcula o início relativo ao `exportStartTime`
-            const scheduledStartTime = Math.max(0, strokeStart - exportStartTime);
-            let strokeDuration = strokeEnd - strokeStart;
-            if (strokeDuration <=0) strokeDuration = 0.05;
+            if (effectiveEndCanvas <= effectiveStartCanvas) return;
 
-            // Recalcula freqValues se o traço começar antes ou terminar depois da seleção de exportação
-            // Para garantir que a interpolação cubra apenas o trecho visível/audível
-            const exportRelativeMinX = Math.max(minX, exportStartTime * PIXELS_PER_SECOND);
-            const exportRelativeMaxX = Math.min(maxX, exportEndTime * PIXELS_PER_SECOND);
-            const effectiveDuration = (exportRelativeMaxX - exportRelativeMinX) / PIXELS_PER_SECOND;
+            const scheduledStartTime = effectiveStartCanvas - exportStartTime;
+            const effectiveDuration = effectiveEndCanvas - effectiveStartCanvas;
 
+            // CORREÇÃO: Recálculo de freqValues para exportação
             const freqValues = new Float32Array(Math.ceil(effectiveDuration * 100));
-            let currentPointIndex = 0;
-            for (let i = 0; i < freqValues.length; i++) {
-                const timeInEffectiveStroke = i / 100;
-                const xPosInEffectiveStroke = exportRelativeMinX + timeInEffectiveStroke * PIXELS_PER_SECOND;
+            
+            const startXForGeneration = effectiveStartCanvas * PIXELS_PER_SECOND;
 
-                while(currentPointIndex < stroke.points.length - 2 && stroke.points[currentPointIndex + 1].x < xPosInEffectiveStroke) {
+            let currentPointIndex = 0;
+            while(currentPointIndex < stroke.points.length - 2 && stroke.points[currentPointIndex + 1].x < startXForGeneration) {
+                currentPointIndex++;
+            }
+
+            for (let i = 0; i < freqValues.length; i++) {
+                const timeInSegment = i / 100;
+                const xPosForFreq = startXForGeneration + timeInSegment * PIXELS_PER_SECOND;
+
+                if (xPosForFreq > maxX) {
+                    freqValues[i] = yToFrequency(stroke.points[stroke.points.length - 1].y);
+                    continue;
+                }
+
+                while(currentPointIndex < stroke.points.length - 2 && stroke.points[currentPointIndex + 1].x < xPosForFreq) {
                     currentPointIndex++;
                 }
                 const p1 = stroke.points[currentPointIndex];
                 const p2 = stroke.points[currentPointIndex + 1] || p1;
 
-                const segmentProgress = (p2.x - p1.x === 0) ? 0 : (xPosInEffectiveStroke - p1.x) / (p2.x - p1.x);
+                const segmentProgress = (p2.x - p1.x === 0) ? 0 : (xPosForFreq - p1.x) / (p2.x - p1.x);
                 const interpolatedY = p1.y + (p2.y - p1.y) * segmentProgress;
                 freqValues[i] = yToFrequency(interpolatedY);
             }
-
 
             const vol = 0.1 + (stroke.lineWidth / 50) * 0.4;
             const pan = xToPan(minX); 
 
             createTone(audioCtx, {
-                element: stroke, // Passa o elemento completo
+                element: stroke,
                 type: stroke.timbre,
                 startTime: now + scheduledStartTime,
-                endTime: now + scheduledStartTime + effectiveDuration, // Usa a duração efetiva
+                endTime: now + scheduledStartTime + effectiveDuration,
                 freqValues: freqValues,
                 vol: vol,
                 pan: pan,
@@ -2690,37 +2479,72 @@ async function exportWav() {
         });
 
         state.composition.symbols.forEach(s => {
-            const symbolTime = s.x / PIXELS_PER_SECOND;
-            if (symbolTime < exportStartTime || symbolTime > exportEndTime) return;
+            const symbolTimeCanvas = s.x / PIXELS_PER_SECOND;
+            const symbolDuration = 0.1;
 
-            const scheduledTime = now + (symbolTime - exportStartTime);
+            const effectiveSymbolStartCanvas = Math.max(symbolTimeCanvas, exportStartTime);
+            const effectiveSymbolEndCanvas = Math.min(symbolTimeCanvas + symbolDuration, exportEndTime);
+
+            if (effectiveSymbolEndCanvas <= effectiveSymbolStartCanvas) return;
+
+            const scheduledTime = now + (effectiveSymbolStartCanvas - exportStartTime);
             const vol = 0.1 + (s.size / 50) * 0.4;
             const pan = xToPan(s.x);
-            const freq = yToFrequency(s.y);
+            let freq = yToFrequency(s.y);
 
             switch (s.type) {
                 case 'staccato': createTone(offlineCtx, { element: s, type: 'triangle', startTime: scheduledTime, endTime: scheduledTime + 0.08, startFreq: freq, vol, pan, xStart: s.x, initialY: s.y }, mainOut); break;
                 case 'percussion': createTone(offlineCtx, { element: s, type: 'noise', startTime: scheduledTime, endTime: scheduledTime + 0.1, vol, pan, xStart: s.x, initialY: s.y }, mainOut); break;
                 case 'arpeggio':
                     [1, 5/4, 3/2, 2].forEach((interval, i) => {
-                        createTone(offlineCtx, { element: s, type: 'triangle', startTime: scheduledTime + i * 0.05, endTime: scheduledTime + i * 0.05 + 0.1, startFreq: freq * interval, vol: vol*0.8, pan, xStart: s.x, initialY: s.y }, mainOut);
+                        const noteScheduledTime = now + (symbolTimeCanvas + i * 0.05 - exportStartTime);
+                        if (noteScheduledTime < now || noteScheduledTime > now + duration) return;
+                        createTone(offlineCtx, { element: s, type: 'triangle', startTime: noteScheduledTime, endTime: noteScheduledTime + 0.1, startFreq: freq * interval, vol: vol*0.8, pan, xStart: s.x, initialY: s.y }, mainOut);
                     });
                     break;
                 case 'glissando':
-                    const glissEndTime = scheduledTime + ((s.endX - s.x) / PIXELS_PER_SECOND);
-                    if (glissEndTime > scheduledTime) {
-                        createTone(offlineCtx, { element: s, type: s.timbre, startTime: scheduledTime, endTime: glissEndTime, startFreq: yToFrequency(s.y), endFreq: yToFrequency(s.endY), vol, pan, xStart: s.x, xEnd: s.endX, initialY: s.y }, mainOut);
+                    const glissStartTimeCanvas = s.x / PIXELS_PER_SECOND;
+                    const glissEndTimeCanvas = s.endX / PIXELS_PER_SECOND;
+
+                    const effectiveGlissStartCanvas = Math.max(glissStartTimeCanvas, exportStartTime);
+                    const effectiveGlissEndCanvas = Math.min(glissEndTimeCanvas, exportEndTime);
+
+                    if (effectiveGlissEndCanvas <= effectiveGlissStartCanvas) return;
+
+                    const scheduledGlissStart = now + (effectiveGlissStartCanvas - exportStartTime);
+                    const glissDuration = effectiveGlissEndCanvas - effectiveGlissStartCanvas;
+                    
+                    let startFreq = yToFrequency(s.y);
+                    let endFreq = yToFrequency(s.endY);
+
+                    // CORREÇÃO: Interpolação de frequências de glissando na exportação
+                    const originalGlissTotalDuration = glissEndTimeCanvas - glissStartTimeCanvas;
+                    if (originalGlissTotalDuration > 0) {
+                        if (effectiveGlissStartCanvas > glissStartTimeCanvas) {
+                            const progressAtStart = (effectiveGlissStartCanvas - glissStartTimeCanvas) / originalGlissTotalDuration;
+                            startFreq = yToFrequency(s.y + (s.endY - s.y) * progressAtStart);
+                        }
+                        if (effectiveGlissEndCanvas < glissEndTimeCanvas) {
+                            const progressAtEnd = (effectiveGlissEndCanvas - glissStartTimeCanvas) / originalGlissTotalDuration;
+                            endFreq = yToFrequency(s.y + (s.endY - s.y) * progressAtEnd);
+                        }
                     }
+
+                    createTone(offlineCtx, { element: s, type: s.timbre, startTime: scheduledGlissStart, endTime: scheduledGlissStart + glissDuration, startFreq: startFreq, endFreq: endFreq, vol, pan, xStart: s.x, xEnd: s.endX, initialY: s.y }, mainOut);
                     break;
                 case 'tremolo':
                     for (let t = 0; t < 0.5; t += 0.05) {
-                        createTone(offlineCtx, { element: s, type: 'sine', startTime: scheduledTime + t, endTime: scheduledTime + t + 0.1, startFreq: freq, vol: vol * 0.8, pan, xStart: s.x, initialY: s.y }, mainOut);
+                        const tremoloScheduledTime = now + (symbolTimeCanvas + t - exportStartTime);
+                        if (tremoloScheduledTime < now || tremoloScheduledTime > now + duration) return;
+                        createTone(offlineCtx, { element: s, type: 'sine', startTime: tremoloScheduledTime, endTime: tremoloScheduledTime + 0.1, startFreq: freq, vol: vol * 0.8, pan, xStart: s.x, initialY: s.y }, mainOut);
                     }
                     break;
                 case 'granular':
                     for (let i = 0; i < 20; i++) {
-                         const t = scheduledTime + Math.random() * 0.5;
-                         createTone(offlineCtx, { element: s, type: 'sine', startTime: t, endTime: t + Math.random() * 0.1 + 0.05, startFreq: yToFrequency(s.y - s.size / 2 + Math.random() * s.size), vol: Math.random() * vol, pan: pan - 0.2 + Math.random() * 0.4, xStart: s.x, initialY: s.y }, mainOut);
+                         const randomOffset = Math.random() * 0.5;
+                         const granularScheduledTime = now + (symbolTimeCanvas + randomOffset - exportStartTime);
+                         if (granularScheduledTime < now || granularScheduledTime > now + duration) return;
+                         createTone(offlineCtx, { element: s, type: 'sine', startTime: granularScheduledTime, endTime: granularScheduledTime + Math.random() * 0.1 + 0.05, startFreq: yToFrequency(s.y - s.size / 2 + Math.random() * s.size), vol: Math.random() * vol, pan: pan - 0.2 + Math.random() * 0.4, xStart: s.x, initialY: s.y }, mainOut);
                     }
                     break;
                 case 'line': 
