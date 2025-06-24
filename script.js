@@ -446,7 +446,14 @@ function getEventPos(e) {
 }
 
 function startAction(e) {
-    if (e.target === el.playhead) return;
+    if (e.target === el.playhead) { // NOVO: Permite arrastar o playhead
+        state.isDraggingPlayhead = true;
+        d.body.style.cursor = 'ew-resize';
+        if (state.isPlaying) {
+            stopPlayback();
+        }
+        return; 
+    }
 
     e.preventDefault();
     initAudio();
@@ -596,7 +603,10 @@ function stopAction(e) {
 }
 
 function performAction(e) {
-    if (state.isDraggingPlayhead) return;
+    if (state.isDraggingPlayhead) { // NOVO: Lógica para arrastar o playhead
+        handlePlayheadDrag(e);
+        return;
+    }
     if (!state.isDrawing) return; 
     e.preventDefault();
     const pos = getEventPos(e);
@@ -720,13 +730,8 @@ function handleTimelineClick(e) {
 
 // --- Funções de arrastar o Playhead ---
 function startPlayheadDrag(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (state.isPlaying) {
-        stopPlayback();
-    }
-    state.isDraggingPlayhead = true;
-    d.body.style.cursor = 'ew-resize';
+    // Essa função já é chamada pelo mousedown do playhead no início de startAction
+    // A lógica de arrastar está no performAction e o stop no stopPlayheadDrag
 }
 
 function handlePlayheadDrag(e) {
@@ -789,20 +794,20 @@ function placeSymbol(options, type, glissandoStart = null) {
         symbol.y = glissandoStart.y;
         symbol.endX = options.x;
         symbol.endY = options.y;
-    } else if (type === 'line' && options.endX !== undefined) {
+    } else if (type === 'line') {
         symbol.x = options.x;
         symbol.y = options.y;
         symbol.endX = options.endX;
         symbol.endY = options.endY;
-    } else if (type === 'circle' && options.radius !== undefined) {
+    } else if (type === 'circle') {
         symbol.x = options.x;
         symbol.y = options.y;
         symbol.radius = options.radius;
-    } else if (type === 'rectangle' && options.endX !== undefined) {
+    } else if (type === 'rectangle') {
         symbol.x = options.x;
         symbol.y = options.y;
-        symbol.width = options.endX - options.x;
-        symbol.height = options.endY - options.y;
+        symbol.width = options.width;
+        symbol.height = options.height;
     } else { // Para símbolos de clique único como staccato, percussion, etc.
         symbol.x = options.x;
         symbol.y = options.y;
@@ -819,7 +824,7 @@ function drawElementWithEffects(element) {
 
     // Aplica efeitos visuais aqui (se existirem e se o elemento não for temporário como prévia de linha/círculo)
     if (element.effects && element.effects.length > 0) {
-        // Para múltiplos efeitos, a ordem pode importar. Definindo uma ordem arbitraria
+        // Para múltiplos efeitos, a ordem pode importar. Definindo uma ordem arbitrária
         // para garantir que efeitos de sombra/transparência sejam aplicados antes de deslocamentos.
         const visualEffectOrder = ['delayZone', 'reverbZone', 'distortion', 'volumeZone', 'gain', 'lowEq', 'midEq', 'highEq', 'phaser', 'flanger', 'chorus', 'tremoloAmplitude', 'wah', 'lowpassFilter', 'highpassFilter', 'bandpassFilter', 'notchFilter', 'panZone'];
 
@@ -840,7 +845,7 @@ function drawElementWithEffects(element) {
                 case 'reverbZone':
                     const reverbAmount = effect.params.mix || 0;
                     if (reverbAmount > 0) {
-                        ctx.shadowBlur = reverbAmount * 20; 
+                        ctx.shadowBlur = reverbAmount * 20; // Mais reverb, mais blur
                         ctx.shadowColor = element.color;
                         ctx.shadowOffsetX = 0;
                         ctx.shadowOffsetY = 0;
@@ -850,8 +855,8 @@ function drawElementWithEffects(element) {
                     const delayAmount = effect.params.mix || 0;
                     if (delayAmount > 0) {
                         const numEchoes = Math.floor(delayAmount * 4) + 1; // 1 a 5 ecos
-                        const echoOffsetX = 5 * (effect.params.time || 0.25) * (effect.params.mix || 0.5); 
-                        const echoOffsetY = 5 * (effect.params.time || 0.25) * (effect.params.mix || 0.5); 
+                        const echoOffsetX = 5 * (effect.params.time || 0.25) * (effect.params.mix || 0.5); // Deslocamento baseado no tempo e mix
+                        const echoOffsetY = 5 * (effect.params.time || 0.25) * (effect.params.mix || 0.5); // Pequeno deslocamento vertical para "corte"
                         for (let i = 1; i <= numEchoes; i++) {
                             ctx.globalAlpha = originalAlpha * (delayAmount * 0.4) * (1 - (i / (numEchoes + 1))); // Opacidade do eco diminui
                             ctx.translate(echoOffsetX, echoOffsetY); 
@@ -885,7 +890,7 @@ function drawElementWithEffects(element) {
                     break;
                 // Outros efeitos visuais mais complexos podem ser adicionados aqui
             }
-            ctx.restore(); // Restaura o estado salvo para este efeito (limpa sombras, translações, etc.)
+            ctx.restore(); // Restaura o estado para este efeito (limpa sombras, translações, etc.)
         });
     }
 
@@ -989,7 +994,7 @@ function applyEffectToSelectedElements(effectType, sliderValue) {
                     params.gain = (sliderValue / 100) * 2; // Ganho de 0 a 2.0 (slider de 0-200)
                     break;
                 case 'panZone': // Corresponde ao slider 'panEffect'
-                    params.pan = (sliderValue - (sliderMin)) / (sliderMax - sliderMin) * 2 - 1; // Pan de -1.0 a 1.0 (slider de -100 a 100)
+                    params.pan = (sliderValue - 0) / 100 -1; // Pan de -1.0 a 1.0 (slider de -100 a 100)
                     break;
                 case 'vibratoZone': // Corresponde ao slider 'vibratoEffect'
                     params.rate = (normalizedValue * 10) + 1; // Frequência do LFO (1 a 11 Hz)
@@ -1832,6 +1837,7 @@ function createTone(audioCtx, opts, mainOut) {
                     currentNode = effectNode;
                     break;
                 case 'vibratoZone':
+                    // Acessar o oscilador original diretamente para vibrato, se aplicável
                     let targetOscillatorFreqParam = null;
                     if (osc instanceof OscillatorNode) { 
                         targetOscillatorFreqParam = osc.frequency;
@@ -2175,7 +2181,7 @@ function exportJpg() {
         tempCtx.drawImage(el.canvas, 0, 0);
 
         const link = d.createElement('a');
-        link.href = tempCanvas.toDataURL('image/jpeg', 0.9);
+        link.href = URL.createObjectURL(blob);
         link.download = `music-drawing-${Date.now()}.jpg`;
         link.click();
     } catch (e) {
@@ -2202,7 +2208,7 @@ function exportPdf() {
             format: [tempCanvas.width, tempCanvas.height]
         });
 
-        pdf.addImage(imgData, 'JPEG', 0, 0, tempCanvas.width, tempCanvas.height);
+        pdf.addImage(imgData, 'JPEG', 0, 0, tempCanvas.width, tempCtx.height);
         pdf.save(`music-drawing-${Date.now()}.pdf`);
 
     } catch (e) {
