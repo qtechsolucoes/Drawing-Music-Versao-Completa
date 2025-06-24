@@ -203,6 +203,36 @@ input[type="color"]::-webkit-color-swatch { border-radius: 7px; border: none; }
 #loading-overlay .loader { width: 60px; height: 60px; border: 5px solid rgba(255, 255, 255, 0.2); border-top-color: var(--primary-glow); border-radius: 50%; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* NOVO: Estilos para inputs de número (knobs) */
+input[type="number"] {
+    -webkit-appearance: textfield; /* Remove spinner buttons on Chrome/Safari */
+    -moz-appearance: textfield; /* Remove spinner buttons on Firefox */
+    appearance: textfield; /* Standard property */
+    width: 100%;
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color-dark);
+    background-color: rgba(128, 128, 128, 0.05);
+    color: var(--text-light);
+    font-size: 0.9rem;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+input[type="number"]:focus {
+    outline: none;
+    border-color: var(--primary-glow);
+    box-shadow: 0 0 5px var(--primary-glow);
+}
+
+/* Hide arrow buttons for input type number on some browsers */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+
 /* ==========================================================================
    6. Modo Mobile (Reestruturado)
    ========================================================================== */
