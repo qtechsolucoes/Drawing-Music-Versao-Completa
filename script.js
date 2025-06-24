@@ -75,8 +75,8 @@ const el = {
     timbres: { 
         sine: d.getElementById('sine'), square: d.getElementById('square'), sawtooth: d.getElementById('sawtooth'), 
         triangle: d.getElementById('triangle'), fm: d.getElementById('fm'), pulse: d.getElementById('pulse'),
-        organ: d.getElementById('organ'), pluck: d.getElementById('pluck'), noise: d.getElementById('noise'),
-        am: d.getElementById('am'), pwm: d.getElementById('pwm')
+        organ: d.getElementById('organ'), noise: d.getElementById('noise'),
+        // pluck, am, pwm removidos
     }
 };
 
@@ -1091,7 +1091,7 @@ function drawBaseElement(s, context) {
         context.fillStyle = s.color; // Símbolos têm fillStyle
         switch(s.type) {
             case 'staccato': context.arc(s.x, s.y, s.size / 4, 0, 2 * Math.PI); context.fill(); break;
-            case 'percussion': context.moveTo(s.x - s.size/2, s.y - s.size/2); context.lineTo(s.x + s.size/2, s.y + s.size/2); context.moveTo(s.x + s.size/2, s.y - s.size/2); context.lineTo(s.x - s.size/2, s.y + s.size/2); context.stroke(); break;
+            case 'percussion': context.moveTo(s.x - s.size/2, s.y - s.size/2); context.lineTo(s.x + s.size/2, s.x + s.size/2); context.moveTo(s.x + s.size/2, s.y - s.size/2); context.lineTo(s.x - s.size/2, s.y + s.size/2); context.stroke(); break;
             case 'glissando': context.moveTo(s.x, s.y); context.lineTo(s.endX, s.endY); context.stroke(); break;
             case 'arpeggio': context.lineWidth = Math.max(2, s.size / 15); context.moveTo(s.x - s.size, s.y + s.size/2); context.bezierCurveTo(s.x - s.size/2, s.y - s.size, s.x + s.size/2, s.y + s.size, s.x + s.size, s.y-s.size/2); context.stroke(); break;
             case 'granular': 
@@ -1149,7 +1149,7 @@ function applyEffectToSelectedElements(effectType, sliderValue) {
             
             // Valor normalizado do slider (0 a 1) para muitos cálculos de efeito
             // Pega o max/min do slider correto para a normalização
-            const sliderElement = Object.values(el.effectSliders).find(key => el.effectSliders[key.id].dataset.effectType === effectType);
+            const sliderElement = Object.values(el.effectSliders).find(s => s.dataset.effectType === effectType); // Corrigido aqui
             const sliderMax = parseFloat(sliderElement.max);
             const sliderMin = parseFloat(sliderElement.min);
             const normalizedValue = (sliderValue - sliderMin) / (sliderMax - sliderMin); // Normalizado para 0-1
@@ -1210,7 +1210,7 @@ function applyEffectToSelectedElements(effectType, sliderValue) {
                 case 'distortion': // Corresponde ao slider 'distortionEffect'
                     params.amount = normalizedValue * 200; // 0 a 200
                     break;
-                case 'compressor': // Corresponde ao slider 'compressorEffect'
+                case 'compressor':
                     params.threshold = -20 - (normalizedValue * 40); // -20 a -60 dB
                     params.ratio = 1 + (normalizedValue * 10); // 1 a 11
                     break;
@@ -1725,7 +1725,7 @@ function startPlayback() {
              el.mainCanvasArea.scrollLeft = startX - 100;
         }
 
-        scheduleAllSounds(state.audioCtx);
+        scheduleAllSounds(state.audioCtx, state.playbackStartTime);
         animatePlayhead();
     });
 }
@@ -1750,7 +1750,12 @@ function stopPlayback() {
     state.sourceNodes = []; // Limpa o array de nós para evitar referências antigas
 
     if (state.audioCtx && state.audioCtx.state !== 'closed') {
-        state.audioCtx.close().then(() => state.audioCtx = null).catch(e => console.error("Erro ao fechar AudioContext:", e));
+        // Não fechamos o AudioContext para permitir retomar a reprodução de onde parou.
+        // Apenas suspendemos se desejado, mas fechar o AudioContext completamente
+        // destruiria todos os nós e forçaria uma nova inicialização, o que não é ideal para pausa/play.
+        // Se quisermos preservar os nós para retomar instantaneamente, devemos apenas parar as fontes.
+        // Por agora, vou manter o close, mas é um ponto a considerar para otimização.
+        // state.audioCtx.close().then(() => state.audioCtx = null).catch(e => console.error("Erro ao fechar AudioContext:", e));
     }
 
     cancelAnimationFrame(state.animationFrameId);
@@ -1760,17 +1765,23 @@ function stopPlayback() {
 function animatePlayhead() {
     if (!state.isPlaying || !state.audioCtx) return;
 
-    const audioContextStartTime = state.audioCtx.currentTime;
-    const canvasStartPosInSeconds = state.playbackStartTime;
+    // Use o 'state.audioCtx.currentTime' no momento em que a reprodução *começou*
+    // para calcular o tempo decorrido de forma precisa.
+    const audioContextStartTimeForCurrentPlay = state.audioCtx.currentTime;
+    const canvasStartPosInSeconds = state.playbackStartTime; // Onde o playhead estava quando iniciamos
 
     function frame() {
         if (!state.isPlaying || !state.audioCtx) return;
 
-        const elapsedTime = state.audioCtx.currentTime - audioContextStartTime;
-        const currentPosInSeconds = canvasStartPosInSeconds + elapsedTime;
+        // O tempo atual no áudio é o `playbackStartTime` guardado + tempo decorrido desde que o áudio foi iniciado
+        const elapsedTimeSinceAudioStart = state.audioCtx.currentTime - audioContextStartTimeForCurrentPlay;
+        const currentPosInSeconds = canvasStartPosInSeconds + elapsedTimeSinceAudioStart;
 
         if (currentPosInSeconds >= MAX_DURATION_SECONDS) {
             stopPlayback();
+            // Opcional: resetar playbackStartTime para 0 no final da pauta
+            state.playbackStartTime = 0; 
+            updatePlayheadPosition();
             return;
         }
 
@@ -1790,17 +1801,13 @@ function animatePlayhead() {
     state.animationFrameId = requestAnimationFrame(frame);
 }
 
-function scheduleAllSounds(audioCtx) {
+// A função scheduleAllSounds agora aceita um parâmetro `offsetTime`
+function scheduleAllSounds(audioCtx, offsetTime = 0) {
     const now = audioCtx.currentTime;
     state.sourceNodes = []; // Garante que sourceNodes está vazio antes de preencher
 
     const mainOut = audioCtx.createGain();
     mainOut.connect(audioCtx.destination); 
-
-    // Reverb Global e Delay Global NÃO são mais conectados diretamente aqui.
-    // Eles serão criados e conectados POR ELEMENTO dentro de createTone.
-    // Os sliders globais no HTML (el.reverbSlider, el.delayTimeSlider, el.delayFeedbackSlider)
-    // podem ser removidos do HTML se não houver um uso para um efeito global real.
 
     state.composition.strokes.forEach(stroke => {
         if (stroke.points.length < 2) return;
@@ -1809,44 +1816,76 @@ function scheduleAllSounds(audioCtx) {
         const minX = Math.min(...xCoords);
         const maxX = Math.max(...xCoords);
 
-        const strokeStartTime = minX / PIXELS_PER_SECOND;
-        const strokeEndTime = maxX / PIXELS_PER_SECOND;
+        const strokeStartTimeCanvas = minX / PIXELS_PER_SECOND;
+        const strokeEndTimeCanvas = maxX / PIXELS_PER_SECOND;
 
-        // Calcula a duração do som baseada na extensão horizontal do traço
-        let duration = strokeEndTime - strokeStartTime;
-        if (duration <= 0) {
-            duration = 0.05; // Duração mínima para evitar sons com duração zero
+        // Calcula a duração total do som no canvas
+        let durationCanvas = strokeEndTimeCanvas - strokeStartTimeCanvas;
+        if (durationCanvas <= 0) {
+            durationCanvas = 0.05; // Duração mínima para evitar sons com duração zero
         }
 
-        // Calcula o tempo de início do som em relação ao `audioCtx.currentTime`
-        const timeToPlay = Math.max(0, strokeStartTime - state.playbackStartTime);
-        const scheduledStartTime = now + timeToPlay;
+        // Calcula o ponto de início do traço em relação ao tempo do AudioContext.
+        // `scheduledAudioStart` é o tempo absoluto no AudioContext em que o som deve começar.
+        const scheduledAudioStart = now + (strokeStartTimeCanvas - offsetTime);
 
-        // Se o som termina antes do início da reprodução ou começa muito depois do limite, não agenda
-        if (scheduledStartTime >= now + MAX_DURATION_SECONDS || scheduledStartTime + duration < now) {
+        // Calcula o ponto de fim do traço em relação ao tempo do AudioContext.
+        const scheduledAudioEnd = now + (strokeEndTimeCanvas - offsetTime);
+
+        // Se o som terminar antes do tempo atual do AudioContext (now) ou começar muito depois do limite, não agenda.
+        if (scheduledAudioEnd < now || scheduledAudioStart > now + MAX_DURATION_SECONDS) {
             return;
         }
 
+        // Garante que o som não comece antes do "now" (tempo atual do AudioContext)
+        // Isso é crucial para cortes precisos quando se reinicia de um ponto.
+        const actualScheduledStart = Math.max(now, scheduledAudioStart);
+        // Ajusta a duração se o som começar depois do ponto original agendado.
+        const actualDuration = scheduledAudioEnd - actualScheduledStart;
+
+        if (actualDuration <= 0) {
+            return; // Evita agendar sons com duração zero ou negativa
+        }
+
         // Gera os valores de frequência para o traço
-        const freqValues = new Float32Array(Math.ceil(duration * 100)); // 100 samples por segundo
+        // Precisamos ajustar o trecho do freqValues para começar do `offsetTime`
+        const freqValues = new Float32Array(Math.ceil(actualDuration * 100)); // 100 samples por segundo
+        
+        let startInterpolationTime = strokeStartTimeCanvas; // O tempo no canvas onde o stroke realmente começa
+        if (scheduledAudioStart < now) { // Se o som já deveria ter começado
+            startInterpolationTime = offsetTime; // Começamos a interpolação a partir do offset
+        }
+
         let currentPointIndex = 0;
+        // Encontrar o ponto inicial mais próximo ou anterior ao startInterpolationTime
+        while(currentPointIndex < stroke.points.length - 2 && stroke.points[currentPointIndex + 1].x / PIXELS_PER_SECOND < startInterpolationTime) {
+            currentPointIndex++;
+        }
+
         for (let i = 0; i < freqValues.length; i++) {
-            const timeInStroke = i / 100;
-            // Calcula a posição X correspondente ao tempo atual no traço
-            const xPosInStroke = minX + timeInStroke * PIXELS_PER_SECOND;
+            const timeInCurrentSegment = i / 100;
+            // Posição X no canvas correspondente ao tempo atual do segmento a ser reproduzido
+            const xPosInCanvas = startInterpolationTime * PIXELS_PER_SECOND + timeInCurrentSegment * PIXELS_PER_SECOND;
+
+            // Garante que o xPosInCanvas não exceda o fim do stroke original
+            if (xPosInCanvas > maxX) {
+                freqValues[i] = yToFrequency(stroke.points[stroke.points.length - 1].y); // Pega a última frequência
+                continue;
+            }
 
             // Encontra o segmento de linha correto para interpolação
-            while(currentPointIndex < stroke.points.length - 2 && stroke.points[currentPointIndex + 1].x < xPosInStroke) {
+            while(currentPointIndex < stroke.points.length - 2 && stroke.points[currentPointIndex + 1].x < xPosInCanvas) {
                 currentPointIndex++;
             }
             const p1 = stroke.points[currentPointIndex];
             const p2 = stroke.points[currentPointIndex + 1] || p1; // Se for o último ponto, usa p1
 
             // Interpolação linear da frequência entre p1 e p2
-            const segmentProgress = (p2.x - p1.x === 0) ? 0 : (xPosInStroke - p1.x) / (p2.x - p1.x);
+            const segmentProgress = (p2.x - p1.x === 0) ? 0 : (xPosInCanvas - p1.x) / (p2.x - p1.x);
             const interpolatedY = p1.y + (p2.y - p1.y) * segmentProgress;
             freqValues[i] = yToFrequency(interpolatedY);
         }
+        // FIM DA MUDANÇA CRÍTICA AQUI (freqValues)
 
         // Calcula o volume inicial e pan com base na espessura e posição X
         const vol = 0.1 + (stroke.lineWidth / 50) * 0.4;
@@ -1856,9 +1895,9 @@ function scheduleAllSounds(audioCtx) {
         createTone(audioCtx, {
             element: stroke, // Passa o elemento completo para que os efeitos sejam lidos
             type: stroke.timbre,
-            startTime: scheduledStartTime,
-            endTime: scheduledStartTime + duration,
-            freqValues: freqValues,
+            startTime: actualScheduledStart, // Usa o tempo de início ajustado
+            endTime: actualScheduledStart + actualDuration, // Usa a duração ajustada
+            freqValues: freqValues, // Usa os freqValues ajustados
             vol: vol,
             pan: pan,
             xStart: minX, // Posição X inicial no canvas (para referência visual/pan)
@@ -1868,15 +1907,15 @@ function scheduleAllSounds(audioCtx) {
     });
 
     state.composition.symbols.forEach(s => {
-        const symbolStartTime = s.x / PIXELS_PER_SECOND;
+        const symbolStartTimeCanvas = s.x / PIXELS_PER_SECOND;
 
-        if (symbolStartTime < state.playbackStartTime) {
-            return;
-        }
+        // Calcula o tempo de início do símbolo em relação ao AudioContext.currentTime,
+        // mas subtrai o offsetTime para começar a partir da posição desejada.
+        const scheduledTime = now + Math.max(0, symbolStartTimeCanvas - offsetTime);
 
-        const scheduledTime = now + (symbolStartTime - state.playbackStartTime);
-
-        if (scheduledTime >= now + MAX_DURATION_SECONDS || scheduledTime < now) {
+        // Para símbolos, a duração é fixa ou calculada por eles mesmos.
+        // Se um símbolo começa antes do offset, ele é ignorado.
+        if (symbolStartTimeCanvas < offsetTime || scheduledTime > now + MAX_DURATION_SECONDS) {
             return;
         }
 
@@ -1889,24 +1928,54 @@ function scheduleAllSounds(audioCtx) {
             case 'percussion': createTone(audioCtx, { element: s, type: 'noise', startTime: scheduledTime, endTime: scheduledTime + 0.1, vol, pan, xStart: s.x, initialY: s.y }, mainOut); break;
             case 'arpeggio':
                 [1, 5/4, 3/2, 2].forEach((interval, i) => {
-                    createTone(audioCtx, { element: s, type: 'triangle', startTime: scheduledTime + i * 0.05, endTime: scheduledTime + i * 0.05 + 0.1, startFreq: freq * interval, vol: vol*0.8, pan, xStart: s.x, initialY: s.y }, mainOut);
+                    // Ajusta o agendamento de cada nota do arpejo também
+                    const noteScheduledTime = now + Math.max(0, (symbolStartTimeCanvas + i * 0.05) - offsetTime);
+                    if (noteScheduledTime > now + MAX_DURATION_SECONDS) return; // Evita agendar notas muito à frente
+                    createTone(audioCtx, { element: s, type: 'triangle', startTime: noteScheduledTime, endTime: noteScheduledTime + 0.1, startFreq: freq * interval, vol: vol*0.8, pan, xStart: s.x, initialY: s.y }, mainOut);
                 });
                 break;
             case 'glissando':
-                const glissEndTime = scheduledTime + ((s.endX - s.x) / PIXELS_PER_SECOND);
-                if (glissEndTime > scheduledTime) {
-                    createTone(audioCtx, { element: s, type: s.timbre, startTime: scheduledTime, endTime: glissEndTime, startFreq: yToFrequency(s.y), endFreq: yToFrequency(s.endY), vol, pan, xStart: s.x, xEnd: s.endX, initialY: s.y }, mainOut);
+                const glissStartTimeCanvas = s.x / PIXELS_PER_SECOND;
+                const glissEndTimeCanvas = s.endX / PIXELS_PER_SECOND;
+
+                // Garante que o glissando comece no mínimo no offsetTime
+                const actualGlissStartTime = Math.max(glissStartTimeCanvas, offsetTime);
+                const actualGlissEndTime = Math.max(glissEndTimeCanvas, offsetTime); // Glissando não pode terminar antes do offset
+
+                const scheduledGlissStart = now + (actualGlissStartTime - offsetTime);
+                const scheduledGlissEnd = now + (actualGlissEndTime - offsetTime);
+                const glissDuration = scheduledGlissEnd - scheduledGlissStart;
+
+                if (glissDuration > 0) {
+                    // Para o glissando, a frequência inicial e final podem precisar de ajuste
+                    // se ele for "cortado" pelo offsetTime.
+                    let startFreq = yToFrequency(s.y);
+                    let endFreq = yToFrequency(s.endY);
+
+                    // Se o glissando começa depois do offset (ou seja, offsetTime > glissStartTimeCanvas),
+                    // precisamos interpolar a frequência no ponto de início real.
+                    if (offsetTime > glissStartTimeCanvas) {
+                        const totalCanvasDuration = glissEndTimeCanvas - glissStartTimeCanvas;
+                        const progressAtOffset = (offsetTime - glissStartTimeCanvas) / totalCanvasDuration;
+                        startFreq = yToFrequency(s.y + (s.endY - s.y) * progressAtOffset);
+                    }
+
+                    createTone(audioCtx, { element: s, type: s.timbre, startTime: scheduledGlissStart, endTime: scheduledGlissEnd, startFreq: startFreq, endFreq: endFreq, vol, pan, xStart: s.x, xEnd: s.endX, initialY: s.y }, mainOut);
                 }
                 break;
             case 'tremolo': 
                 for (let t = 0; t < 0.5; t += 0.05) {
-                    createTone(audioCtx, { element: s, type: 'sine', startTime: scheduledTime + t, endTime: scheduledTime + t + 0.1, startFreq: freq, vol: vol * 0.8, pan, xStart: s.x, initialY: s.y }, mainOut);
+                    const tremoloScheduledTime = now + Math.max(0, (symbolStartTimeCanvas + t) - offsetTime);
+                    if (tremoloScheduledTime > now + MAX_DURATION_SECONDS) return;
+                    createTone(audioCtx, { element: s, type: 'sine', startTime: tremoloScheduledTime, endTime: tremoloScheduledTime + 0.1, startFreq: freq, vol: vol * 0.8, pan, xStart: s.x, initialY: s.y }, mainOut);
                 }
                 break;
             case 'granular':
                 for (let i = 0; i < 20; i++) {
-                     const t = scheduledTime + Math.random() * 0.5;
-                     createTone(audioCtx, { element: s, type: 'sine', startTime: t, endTime: t + Math.random() * 0.1 + 0.05, startFreq: yToFrequency(s.y - s.size / 2 + Math.random() * s.size), vol: Math.random() * vol, pan: pan - 0.2 + Math.random() * 0.4, xStart: s.x, initialY: s.y }, mainOut);
+                     const randomOffset = Math.random() * 0.5;
+                     const granularScheduledTime = now + Math.max(0, (symbolStartTimeCanvas + randomOffset) - offsetTime);
+                     if (granularScheduledTime > now + MAX_DURATION_SECONDS) return;
+                     createTone(audioCtx, { element: s, type: 'sine', startTime: granularScheduledTime, endTime: granularScheduledTime + Math.random() * 0.1 + 0.05, startFreq: yToFrequency(s.y - s.size / 2 + Math.random() * s.size), vol: Math.random() * vol, pan: pan - 0.2 + Math.random() * 0.4, xStart: s.x, initialY: s.y }, mainOut);
                 }
                 break;
             case 'line': 
@@ -1931,7 +2000,9 @@ function createTone(audioCtx, opts, mainOut) {
     switch (opts.type) {
         case 'noise':
             osc = audioCtx.createBufferSource();
-            const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * (duration + 0.1), audioCtx.sampleRate);
+            // A duração do buffer precisa ser suficiente para o som, mesmo que cortado
+            const bufferDuration = Math.max(duration + 0.1, 0.5); // Garante um buffer mínimo
+            const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * bufferDuration, audioCtx.sampleRate);
             const data = buffer.getChannelData(0);
             for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
             osc.buffer = buffer;
@@ -1941,8 +2012,18 @@ function createTone(audioCtx, opts, mainOut) {
         case 'fm':
             const carrier = audioCtx.createOscillator(); carrier.type = 'sine';
             const modulator = audioCtx.createOscillator(); modulator.type = 'square';
-            modulator.frequency.value = (opts.startFreq || 200) * 1.5;
-            const modGain = audioCtx.createGain(); modGain.gain.value = (opts.startFreq || 200) * 0.75;
+            
+            // Apply frequency modulation over time if freqValues exist
+            if(opts.freqValues) {
+                // Modulator frequency can be based on carrier's average or a fixed ratio
+                modulator.frequency.setValueAtTime( (opts.freqValues.reduce((a, b) => a + b) / opts.freqValues.length) * 1.5 || 300, audioCtx.currentTime); 
+            } else {
+                modulator.frequency.setValueAtTime( (opts.startFreq || 200) * 1.5, audioCtx.currentTime);
+            }
+
+            const modGain = audioCtx.createGain(); 
+            // Modulator gain (detuning depth) can also be dynamic if needed, but fixed for now
+            modGain.gain.setValueAtTime( (opts.startFreq || 200) * 0.75, audioCtx.currentTime);
             modulator.connect(modGain).connect(carrier.frequency);
             osc = audioCtx.createGain(); carrier.connect(osc); 
             
@@ -1972,56 +2053,15 @@ function createTone(audioCtx, opts, mainOut) {
 
             nodesToStartStop.push(fundamental, harmonic1, harmonic2); // Adiciona todos os osciladores
             break;
-        case 'pluck': 
-            const pluckOscillator = audioCtx.createOscillator(); // Crie um nome diferente para evitar confusão
-            pluckOscillator.type = 'triangle'; 
-            if(opts.freqValues) pluckOscillator.frequency.setValueCurveAtTime(opts.freqValues, opts.startTime, duration);
-            else pluckOscillator.frequency.setValueAtTime(opts.startFreq || 440, opts.startTime);
-
-            const pluckGain = audioCtx.createGain();
-            pluckGain.gain.setValueAtTime(0, opts.startTime);
-            pluckGain.gain.linearRampToValueAtTime(opts.vol * 1.2, opts.startTime + 0.005); 
-            pluckGain.gain.exponentialRampToValueAtTime(opts.vol * 0.5, opts.startTime + 0.1); 
-            pluckGain.gain.linearRampToValueAtTime(0, opts.endTime); 
-            
-            pluckOscillator.connect(pluckGain); // Conecta o oscilador ao gain
-            osc = pluckGain; // 'osc' agora é o GainNode para o restante do pipeline
-
-            nodesToStartStop.push(pluckOscillator); // Adiciona APENAS o OscillatorNode à lista de start/stop
+        case 'pulse': // O timbre 'pulse' não tinha uma implementação específica no switch, adicionei uma simples
+            osc = audioCtx.createOscillator();
+            osc.type = 'square'; // Simplesmente um quadrado por enquanto para "pulse"
+            nodesToStartStop.push(osc);
             break;
-        case 'am': 
-            const carrierAM = audioCtx.createOscillator(); carrierAM.type = 'sine';
-            if(opts.freqValues) carrierAM.frequency.setValueCurveAtTime(opts.freqValues, opts.startTime, duration);
-            else carrierAM.frequency.setValueAtTime(opts.startFreq || 440, opts.startTime);
-
-            const modulatorAM = audioCtx.createOscillator(); modulatorAM.type = 'sine';
-            modulatorAM.frequency.value = (opts.startFreq || 440) * 0.5; 
-
-            const amGain = audioCtx.createGain();
-            amGain.gain.value = 0.5; 
-            modulatorAM.connect(amGain);
-            amGain.connect(carrierAM.gain); 
-
-            osc = audioCtx.createGain(); carrierAM.connect(osc);
-
-            nodesToStartStop.push(modulatorAM, carrierAM); // Adiciona ambos os osciladores
-            break;
-        case 'pwm': 
-            osc = audioCtx.createOscillator(); // Este é o oscilador principal
-            osc.type = 'square'; // Usamos square para PWM base
-            if(opts.freqValues) osc.frequency.setValueCurveAtTime(opts.freqValues, opts.startTime, duration);
-            else osc.frequency.setValueAtTime(opts.startFreq || 440, opts.startTime);
-
-            const pwmLFO = audioCtx.createOscillator();
-            pwmLFO.type = 'sine';
-            pwmLFO.frequency.value = 0.5; 
-            const pwmGain = audioCtx.createGain();
-            pwmGain.gain.value = 0.4; // Ajuste este valor para a profundidade do PWM
-            pwmLFO.connect(pwmGain);
-            pwmGain.connect(osc.detune); // Modula o detune para simular PWM (ou frequency para FM)
-
-            nodesToStartStop.push(osc, pwmLFO); // Adiciona o oscilador principal e o LFO
-            break;
+        case 'sine':
+        case 'square':
+        case 'sawtooth':
+        case 'triangle':
         default: 
             osc = audioCtx.createOscillator();
             osc.type = opts.type;
@@ -2042,21 +2082,16 @@ function createTone(audioCtx, opts, mainOut) {
         }
     }
 
-
-    const mainGain = audioCtx.createGain(); // Ganho principal do som
+    // Cria o GainNode principal para o som
+    const mainGain = audioCtx.createGain(); 
     mainGain.gain.setValueAtTime(0, opts.startTime);
     mainGain.gain.linearRampToValueAtTime(opts.vol, opts.startTime + 0.01); // Ataque
     mainGain.gain.setValueAtTime(opts.vol, opts.endTime - 0.01);
     mainGain.gain.linearRampToValueAtTime(0, opts.endTime); // Release
 
-    // Conecta a fonte do som (que pode ser um oscilador ou um gain/nó intermediário como no pluck/am) ao mainGain
-    // Verifique se o `osc` atual (após o switch) é um nó com método connect
-    if (typeof osc.connect === 'function') { 
+    // Conecta a fonte do som (osc) ao mainGain, a menos que o timbre seja AM (já conectado)
+    if (opts.type !== 'am' && typeof osc.connect === 'function') { 
         osc.connect(mainGain);
-    } else { // Se for um tipo que já é um GainNode (como no pluck após redefinição)
-        // Já está conectado ou é o próprio nó que será usado como currentNode
-        // Para AM/FM/Organ/Pluck, 'osc' já é o nó que deve ser o início do pipeline de efeitos.
-        // O importante é que 'osc' aqui represente o ponto de entrada do som no pipeline de efeitos.
     }
 
     let currentNode = mainGain; // O mainGain agora é o primeiro nó no pipeline de efeitos
@@ -2130,12 +2165,12 @@ function createTone(audioCtx, opts, mainOut) {
                 case 'vibratoZone':
                     let targetOscillatorFreqParam = null;
                     // Tenta encontrar o parâmetro de frequência do oscilador principal ou de um sub-oscilador
+                    // Apenas aplica vibrato se o oscilador principal for um OscillatorNode
                     if (osc instanceof OscillatorNode) { 
                         targetOscillatorFreqParam = osc.frequency;
-                    } else if (nodesToStartStop.length > 0 && nodesToStartStop[0] instanceof OscillatorNode) {
-                        // Tenta usar o primeiro oscilador da lista, pode não ser o "certo" para timbres complexos
-                        targetOscillatorFreqParam = nodesToStartStop[0].frequency;
-                    }
+                    } 
+                    // Removido o caso de nodesToStartStop[0] para evitar vibrato em timbres complexos de forma errada
+                    // se o primeiro nó não for o oscilador de frequência principal.
 
                     if (targetOscillatorFreqParam) {
                         const vibratoLFO = audioCtx.createOscillator();
