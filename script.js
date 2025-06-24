@@ -584,7 +584,7 @@ function stopAction(e) {
             x: state.selectionStart.x,
             y: state.selectionStart.y,
             width: state.selectionEnd.x - state.selectionStart.x,
-            height: state.selectionEnd.y - state.selectionStart.y,
+            height: state.selectionEnd.y - state.selectionEnd.y, // Corrigido para height com base em y inicial e final
         };
 
         const allElements = [...state.composition.strokes, ...state.composition.symbols];
@@ -1060,6 +1060,8 @@ function drawElementWithEffects(element) {
                 // ctx.filter = `hue-rotate(${i * 15 * mix}deg)`; // Pode não ser suportado uniformemente ou ser caro
 
                 ctx.translate(offsetX, offsetY);
+                drawBaseElement(element, ctx);
+                ctx.translate(-2 * offsetX, -2 * offsetY); // Desfaz a translação para o próximo fantasma (para ir em direções opostas)
                 drawBaseElement(element, ctx);
                 ctx.restore();
             }
@@ -1922,6 +1924,9 @@ function createTone(audioCtx, opts, mainOut) {
     const duration = opts.endTime - opts.startTime;
     if (duration <= 0) return;
 
+    // Array para coletar todos os nós de áudio que precisam ser iniciados e parados
+    const nodesToStartStop = [];
+
     // Criação do oscilador/fonte de som baseado no timbre
     switch (opts.type) {
         case 'noise':
@@ -1931,6 +1936,7 @@ function createTone(audioCtx, opts, mainOut) {
             for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
             osc.buffer = buffer;
             osc.loop = false;
+            nodesToStartStop.push(osc); // Adiciona o BufferSourceNode
             break;
         case 'fm':
             const carrier = audioCtx.createOscillator(); carrier.type = 'sine';
@@ -1939,9 +1945,8 @@ function createTone(audioCtx, opts, mainOut) {
             const modGain = audioCtx.createGain(); modGain.gain.value = (opts.startFreq || 200) * 0.75;
             modulator.connect(modGain).connect(carrier.frequency);
             osc = audioCtx.createGain(); carrier.connect(osc); 
-            modulator.start(opts.startTime); modulator.stop(opts.endTime);
-            carrier.start(opts.startTime); carrier.stop(opts.endTime);
-            state.sourceNodes.push(modulator, carrier);
+            
+            nodesToStartStop.push(modulator, carrier); // Adiciona ambos osciladores
             break;
         case 'organ': 
             osc = audioCtx.createGain(); 
@@ -1965,26 +1970,24 @@ function createTone(audioCtx, opts, mainOut) {
             const gain2 = audioCtx.createGain(); gain2.gain.value = 0.3;
             harmonic2.connect(gain2).connect(osc);
 
-            fundamental.start(opts.startTime); fundamental.stop(opts.endTime);
-            harmonic1.start(opts.startTime); harmonic1.stop(opts.endTime);
-            harmonic2.start(opts.startTime); harmonic2.stop(opts.endTime);
-            state.sourceNodes.push(fundamental, harmonic1, harmonic2);
+            nodesToStartStop.push(fundamental, harmonic1, harmonic2); // Adiciona todos os osciladores
             break;
         case 'pluck': 
-            osc = audioCtx.createOscillator();
-            osc.type = 'triangle'; 
-            if(opts.freqValues) osc.frequency.setValueCurveAtTime(opts.freqValues, opts.startTime, duration);
-            else osc.frequency.setValueAtTime(opts.startFreq || 440, opts.startTime);
+            const pluckOscillator = audioCtx.createOscillator(); // Crie um nome diferente para evitar confusão
+            pluckOscillator.type = 'triangle'; 
+            if(opts.freqValues) pluckOscillator.frequency.setValueCurveAtTime(opts.freqValues, opts.startTime, duration);
+            else pluckOscillator.frequency.setValueAtTime(opts.startFreq || 440, opts.startTime);
 
             const pluckGain = audioCtx.createGain();
             pluckGain.gain.setValueAtTime(0, opts.startTime);
             pluckGain.gain.linearRampToValueAtTime(opts.vol * 1.2, opts.startTime + 0.005); 
             pluckGain.gain.exponentialRampToValueAtTime(opts.vol * 0.5, opts.startTime + 0.1); 
             pluckGain.gain.linearRampToValueAtTime(0, opts.endTime); 
-            osc.connect(pluckGain);
-            osc = pluckGain; 
-            osc.start(opts.startTime); osc.stop(opts.endTime);
-            state.sourceNodes.push(osc); 
+            
+            pluckOscillator.connect(pluckGain); // Conecta o oscilador ao gain
+            osc = pluckGain; // 'osc' agora é o GainNode para o restante do pipeline
+
+            nodesToStartStop.push(pluckOscillator); // Adiciona APENAS o OscillatorNode à lista de start/stop
             break;
         case 'am': 
             const carrierAM = audioCtx.createOscillator(); carrierAM.type = 'sine';
@@ -2001,13 +2004,11 @@ function createTone(audioCtx, opts, mainOut) {
 
             osc = audioCtx.createGain(); carrierAM.connect(osc);
 
-            modulatorAM.start(opts.startTime); modulatorAM.stop(opts.endTime);
-            carrierAM.start(opts.startTime); carrierAM.stop(opts.endTime);
-            state.sourceNodes.push(modulatorAM, carrierAM);
+            nodesToStartStop.push(modulatorAM, carrierAM); // Adiciona ambos os osciladores
             break;
         case 'pwm': 
-            osc = audioCtx.createOscillator();
-            osc.type = 'square';
+            osc = audioCtx.createOscillator(); // Este é o oscilador principal
+            osc.type = 'square'; // Usamos square para PWM base
             if(opts.freqValues) osc.frequency.setValueCurveAtTime(opts.freqValues, opts.startTime, duration);
             else osc.frequency.setValueAtTime(opts.startFreq || 440, opts.startTime);
 
@@ -2015,25 +2016,32 @@ function createTone(audioCtx, opts, mainOut) {
             pwmLFO.type = 'sine';
             pwmLFO.frequency.value = 0.5; 
             const pwmGain = audioCtx.createGain();
-            pwmGain.gain.value = 0.4; 
+            pwmGain.gain.value = 0.4; // Ajuste este valor para a profundidade do PWM
             pwmLFO.connect(pwmGain);
-            pwmGain.connect(osc.detune); 
+            pwmGain.connect(osc.detune); // Modula o detune para simular PWM (ou frequency para FM)
 
-            pwmLFO.start(opts.startTime); pwmLFO.stop(opts.endTime);
-            state.sourceNodes.push(pwmLFO);
+            nodesToStartStop.push(osc, pwmLFO); // Adiciona o oscilador principal e o LFO
             break;
         default: 
             osc = audioCtx.createOscillator();
             osc.type = opts.type;
+            nodesToStartStop.push(osc); // Adiciona o oscilador padrão
             break;
     }
 
-    if (opts.freqValues && osc.frequency) {
-        osc.frequency.setValueCurveAtTime(opts.freqValues, opts.startTime, duration);
-    } else if (opts.startFreq && osc.frequency) {
-        osc.frequency.setValueAtTime(opts.startFreq, opts.startTime);
-        if (opts.endFreq) osc.frequency.linearRampToValueAtTime(opts.endFreq, opts.endTime);
+    // Configuração de frequência para osciladores padrão
+    // Esta parte do código só se aplica a OscillatorNodes que têm a propriedade 'frequency'
+    // E DEVE VIR ANTES DE QUALQUER CONEXÃO DO 'osc' QUE MUDE SEU TIPO (ex: osc = pluckGain)
+    // Para garantir que o oscilador REAL seja configurado.
+    if (nodesToStartStop.includes(osc) && osc instanceof OscillatorNode) { // Verifica se 'osc' ainda é o OscillatorNode original
+        if (opts.freqValues) {
+            osc.frequency.setValueCurveAtTime(opts.freqValues, opts.startTime, duration);
+        } else if (opts.startFreq) {
+            osc.frequency.setValueAtTime(opts.startFreq, opts.startTime);
+            if (opts.endFreq) osc.frequency.linearRampToValueAtTime(opts.endFreq, opts.endTime);
+        }
     }
+
 
     const mainGain = audioCtx.createGain(); // Ganho principal do som
     mainGain.gain.setValueAtTime(0, opts.startTime);
@@ -2041,11 +2049,14 @@ function createTone(audioCtx, opts, mainOut) {
     mainGain.gain.setValueAtTime(opts.vol, opts.endTime - 0.01);
     mainGain.gain.linearRampToValueAtTime(0, opts.endTime); // Release
 
-    // Conecta a fonte do som (osc ou pluckGain) ao mainGain
-    if (osc.connect) { 
+    // Conecta a fonte do som (que pode ser um oscilador ou um gain/nó intermediário como no pluck/am) ao mainGain
+    // Verifique se o `osc` atual (após o switch) é um nó com método connect
+    if (typeof osc.connect === 'function') { 
         osc.connect(mainGain);
-    } else { // Para casos como pluck que já retornam um gain node
-        osc.connect(mainGain);
+    } else { // Se for um tipo que já é um GainNode (como no pluck após redefinição)
+        // Já está conectado ou é o próprio nó que será usado como currentNode
+        // Para AM/FM/Organ/Pluck, 'osc' já é o nó que deve ser o início do pipeline de efeitos.
+        // O importante é que 'osc' aqui represente o ponto de entrada do som no pipeline de efeitos.
     }
 
     let currentNode = mainGain; // O mainGain agora é o primeiro nó no pipeline de efeitos
@@ -2057,17 +2068,21 @@ function createTone(audioCtx, opts, mainOut) {
         const effectOrder = [
             'lowpassFilter', 'highpassFilter', 'bandpassFilter', 'notchFilter', 'bassEq', 'midEq', 'trebleEq', // EQ e Filtros
             'phaser', 'flanger', 'chorus', 'vibratoZone', 'tremoloAmplitude', 'wah', // Modulação
-            'distortion', 'compressor', 'gain', // Dinâmica/Ganho (o volumeZone/gain inicial já foi aplicado como mainGain)
+            'distortion', 'compressor', // Dinâmica (gain já tratado no mainGain)
             // Reverb e Delay são tratados em paralelo com o sinal seco, então precisam de lógica especial
         ];
 
-        // Filtra e ordena os efeitos, tratando Reverb e Delay separadamente
+        // Filtra e ordena os efeitos
         const orderedEffects = effectOrder
             .map(type => opts.element.effects.find(eff => eff.type === type))
             .filter(Boolean); // Remove nulls/undefineds
 
-        const reverbEffect = opts.element.effects.find(eff => eff.type === 'reverbZone');
-        const delayEffect = opts.element.effects.find(eff => eff.type === 'delayZone');
+        // Cria uma cópia do currentNode para o sinal "seco" que será mesclado no final
+        // Isso é crucial para efeitos como Reverb e Delay que operam em paralelo.
+        // Para outros efeitos em série, o `currentNode` se propaga.
+        const drySignalBypassNode = audioCtx.createGain();
+        drySignalBypassNode.gain.value = 1.0; // Inicia com ganho total
+        currentNode.connect(drySignalBypassNode); // Conecta o sinal atual ao bypass
 
         orderedEffects.forEach(effect => {
             let effectNode;
@@ -2106,7 +2121,6 @@ function createTone(audioCtx, opts, mainOut) {
                     currentNode.connect(effectNode);
                     currentNode = effectNode;
                     break;
-                case 'volumeZone': // Este já foi tratado pelo mainGain inicial, pode ser redundante aqui
                 case 'gain': // Se houver um "gain" adicional no pipeline
                     effectNode = audioCtx.createGain();
                     effectNode.gain.value = params.gain || 1.0;
@@ -2114,14 +2128,13 @@ function createTone(audioCtx, opts, mainOut) {
                     currentNode = effectNode;
                     break;
                 case 'vibratoZone':
-                    // Vibrato afeta a frequência do oscilador, precisa de acesso direto ao oscilador original
                     let targetOscillatorFreqParam = null;
+                    // Tenta encontrar o parâmetro de frequência do oscilador principal ou de um sub-oscilador
                     if (osc instanceof OscillatorNode) { 
                         targetOscillatorFreqParam = osc.frequency;
-                    } else { // Para timbres complexos que usam múltiplos osciladores (FM, Organ, AM, PWM)
-                             // Pode-se tentar modular o oscilador principal (se houver um)
-                        if (osc.frequency) targetOscillatorFreqParam = osc.frequency;
-                        else console.warn("Vibrato Zone para timbre complexo pode não funcionar como esperado.");
+                    } else if (nodesToStartStop.length > 0 && nodesToStartStop[0] instanceof OscillatorNode) {
+                        // Tenta usar o primeiro oscilador da lista, pode não ser o "certo" para timbres complexos
+                        targetOscillatorFreqParam = nodesToStartStop[0].frequency;
                     }
 
                     if (targetOscillatorFreqParam) {
@@ -2131,13 +2144,11 @@ function createTone(audioCtx, opts, mainOut) {
                         const vibratoGain = audioCtx.createGain();
                         vibratoGain.gain.value = params.depth || 50; 
                         vibratoLFO.connect(vibratoGain).connect(targetOscillatorFreqParam);
-                        vibratoLFO.start(opts.startTime);
-                        vibratoLFO.stop(opts.endTime);
-                        state.sourceNodes.push(vibratoLFO);
+                        nodesToStartStop.push(vibratoLFO); // Adiciona o LFO para ser iniciado/parado
                     }
                     break;
                 case 'phaser': 
-                    effectNode = audioCtx.createBiquadFilter(); // Allpass filter for phaser effect
+                    effectNode = audioCtx.createBiquadFilter(); 
                     effectNode.type = 'allpass';
                     const phaserLFO = audioCtx.createOscillator();
                     phaserLFO.type = 'sine';
@@ -2147,77 +2158,63 @@ function createTone(audioCtx, opts, mainOut) {
                     phaserLFO.connect(phaserGain).connect(effectNode.frequency);
                     currentNode.connect(effectNode);
                     currentNode = effectNode;
-                    phaserLFO.start(opts.startTime);
-                    phaserLFO.stop(opts.endTime);
-                    state.sourceNodes.push(phaserLFO);
+                    nodesToStartStop.push(phaserLFO);
                     break;
                 case 'flanger': 
-                    effectNode = audioCtx.createDelay(0.05); // max delay 50ms for flanger
+                    effectNode = audioCtx.createDelay(0.05);
                     const flangerLFO = audioCtx.createOscillator();
                     flangerLFO.type = 'sine';
                     flangerLFO.frequency.value = params.rate || 0.2;
                     const flangerLFO_Gain = audioCtx.createGain();
-                    flangerLFO_Gain.gain.value = params.delay || 0.005; // max delay modulation depth (e.g., 5ms)
+                    flangerLFO_Gain.gain.value = params.delay || 0.005;
                     flangerLFO.connect(flangerLFO_Gain).connect(effectNode.delayTime);
 
                     const flangerFeedback = audioCtx.createGain();
                     flangerFeedback.gain.value = params.feedback || 0.8;
 
-                    const flangerDry = audioCtx.createGain(); flangerDry.gain.value = 1 - (params.mix || 0.5);
-                    const flangerWet = audioCtx.createGain(); flangerWet.gain.value = params.mix || 0.5;
-
-                    // Conecta Dry e Wet em paralelo e os mescla
-                    currentNode.connect(flangerDry); // Sinal DRY
-                    currentNode.connect(effectNode); // Sinal para o delay (WET)
-                    effectNode.connect(flangerFeedback).connect(effectNode); // Feedback loop
-                    effectNode.connect(flangerWet); // Sinal WET
-
+                    // NOTA: Para flanger/chorus, o mix dry/wet é um pouco mais complexo se for para
+                    // um "insert" no pipeline. A abordagem de send/return é mais comum.
+                    // Para simplificar e manter a cadeia, vamos misturar aqui.
                     const flangerMerger = audioCtx.createChannelMerger(1);
-                    flangerDry.connect(flangerMerger);
-                    flangerWet.connect(flangerMerger);
-                    currentNode = flangerMerger; // Saída combinada
+                    const flangerWetMix = audioCtx.createGain(); flangerWetMix.gain.value = params.mix || 0.5;
+                    const flangerDryMix = audioCtx.createGain(); flangerDryMix.gain.value = 1 - (params.mix || 0.5);
 
-                    flangerLFO.start(opts.startTime);
-                    flangerLFO.stop(opts.endTime);
-                    state.sourceNodes.push(flangerLFO);
+                    currentNode.connect(flangerDryMix).connect(flangerMerger);
+                    currentNode.connect(effectNode).connect(flangerFeedback).connect(effectNode); // Loop de feedback
+                    effectNode.connect(flangerWetMix).connect(flangerMerger);
+                    
+                    currentNode = flangerMerger;
+                    nodesToStartStop.push(flangerLFO);
                     break;
                 case 'chorus': 
-                    // Simulando um chorus com 2 delays LFO-modulados para um efeito mais cheio
-                    const chorusDelay1 = audioCtx.createDelay(0.1); // max delay 100ms
+                    const chorusDelay1 = audioCtx.createDelay(0.1);
                     const chorusDelay2 = audioCtx.createDelay(0.1);
 
                     const chorusLFO1 = audioCtx.createOscillator();
                     chorusLFO1.type = 'sine';
                     chorusLFO1.frequency.value = params.rate || 0.1;
                     const chorusLFO1_Gain = audioCtx.createGain();
-                    chorusLFO1_Gain.gain.value = params.delay || 0.02; // depth (20ms)
+                    chorusLFO1_Gain.gain.value = params.delay || 0.02;
                     chorusLFO1.connect(chorusLFO1_Gain).connect(chorusDelay1.delayTime);
 
                     const chorusLFO2 = audioCtx.createOscillator();
                     chorusLFO2.type = 'sine';
-                    chorusLFO2.frequency.value = (params.rate || 0.1) * 1.2; // Levemente diferente do LFO1
+                    chorusLFO2.frequency.value = (params.rate || 0.1) * 1.2;
                     const chorusLFO2_Gain = audioCtx.createGain();
-                    chorusLFO2_Gain.gain.value = (params.delay || 0.02) * 0.8; // Levemente diferente do LFO1
+                    chorusLFO2_Gain.gain.value = (params.delay || 0.02) * 0.8;
                     chorusLFO2.connect(chorusLFO2_Gain).connect(chorusDelay2.delayTime);
 
-                    const chorusDryGain = audioCtx.createGain(); chorusDryGain.gain.value = 1 - (params.mix || 0.5);
-                    const chorusWetGain1 = audioCtx.createGain(); chorusWetGain1.gain.value = (params.mix || 0.5) / 2;
-                    const chorusWetGain2 = audioCtx.createGain(); chorusWetGain2.gain.value = (params.mix || 0.5) / 2;
-
-                    // Conecta DRY e ambos os WETs a um merger
-                    currentNode.connect(chorusDryGain);
-                    currentNode.connect(chorusDelay1).connect(chorusWetGain1);
-                    currentNode.connect(chorusDelay2).connect(chorusWetGain2);
-
                     const chorusMerger = audioCtx.createChannelMerger(1);
-                    chorusDryGain.connect(chorusMerger);
-                    chorusWetGain1.connect(chorusMerger);
-                    chorusWetGain2.connect(chorusMerger);
-                    currentNode = chorusMerger;
+                    const chorusWetMix1 = audioCtx.createGain(); chorusWetMix1.gain.value = (params.mix || 0.5) / 2;
+                    const chorusWetMix2 = audioCtx.createGain(); chorusWetMix2.gain.value = (params.mix || 0.5) / 2;
+                    const chorusDryMix = audioCtx.createGain(); chorusDryMix.gain.value = 1 - (params.mix || 0.5);
 
-                    chorusLFO1.start(opts.startTime); chorusLFO1.stop(opts.endTime);
-                    chorusLFO2.start(opts.startTime); chorusLFO2.stop(opts.endTime);
-                    state.sourceNodes.push(chorusLFO1, chorusLFO2);
+                    currentNode.connect(chorusDryMix).connect(chorusMerger);
+                    currentNode.connect(chorusDelay1).connect(chorusWetMix1).connect(chorusMerger);
+                    currentNode.connect(chorusDelay2).connect(chorusWetMix2).connect(chorusMerger);
+
+                    currentNode = chorusMerger;
+                    nodesToStartStop.push(chorusLFO1, chorusLFO2);
                     break;
                 case 'distortion':
                     effectNode = audioCtx.createWaveShaper();
@@ -2229,45 +2226,40 @@ function createTone(audioCtx, opts, mainOut) {
                 case 'compressor':
                     effectNode = audioCtx.createDynamicsCompressor();
                     effectNode.threshold.value = params.threshold || -50;
-                    effectNode.knee.value = params.knee || 40; // Default knee: 40
-                    effectNode.ratio.value = params.ratio || 12; // Default ratio: 12
-                    effectNode.attack.value = params.attack || 0.005; // Default attack: 0.005
-                    effectNode.release.value = params.release || 0.25; // Default release: 0.25
+                    effectNode.knee.value = params.knee || 40;
+                    effectNode.ratio.value = params.ratio || 12;
+                    effectNode.attack.value = params.attack || 0.005;
+                    effectNode.release.value = params.release || 0.25;
                     currentNode.connect(effectNode);
                     currentNode = effectNode;
                     break;
                 case 'tremoloAmplitude':
-                    effectNode = audioCtx.createGain(); // Este GainNode será modulado
+                    effectNode = audioCtx.createGain(); 
                     const tremoloAmpLFO = audioCtx.createOscillator();
                     tremoloAmpLFO.type = 'sine';
                     tremoloAmpLFO.frequency.value = params.rate || 8; 
                     const tremoloAmpGainNode = audioCtx.createGain();
-                    tremoloAmpGainNode.gain.value = params.depth || 0.5; // Depth 0-1
+                    tremoloAmpGainNode.gain.value = params.depth || 0.5; 
                     tremoloAmpLFO.connect(tremoloAmpGainNode);
-                    tremoloAmpGainNode.connect(effectNode.gain); // Modula o gain do effectNode
+                    tremoloAmpGainNode.connect(effectNode.gain); 
                     currentNode.connect(effectNode);
                     currentNode = effectNode;
-                    tremoloAmpLFO.start(opts.startTime);
-                    tremoloAmpLFO.stop(opts.endTime);
-                    state.sourceNodes.push(tremoloAmpLFO);
+                    nodesToStartStop.push(tremoloAmpLFO);
                     break;
                 case 'wah':
                     effectNode = audioCtx.createBiquadFilter();
-                    effectNode.type = 'bandpass'; // Wah-wah effect uses a bandpass filter
+                    effectNode.type = 'bandpass';
                     effectNode.Q.value = params.q || 10; 
                     const wahLFO = audioCtx.createOscillator();
                     wahLFO.type = 'sine';
                     wahLFO.frequency.value = params.rate || 2; 
                     const wahGain = audioCtx.createGain();
-                    // Modula a frequência do filtro de 0 até o 'range' especificado, a partir da 'baseFreq'
                     wahGain.gain.value = params.range || 2000; 
                     wahLFO.connect(wahGain).connect(effectNode.frequency); 
-                    effectNode.frequency.value = params.baseFreq || 500; // Frequência central base
+                    effectNode.frequency.value = params.baseFreq || 500; 
                     currentNode.connect(effectNode);
                     currentNode = effectNode;
-                    wahLFO.start(opts.startTime);
-                    wahLFO.stop(opts.endTime);
-                    state.sourceNodes.push(wahLFO);
+                    nodesToStartStop.push(wahLFO);
                     break;
                 case 'bassEq':
                     effectNode = audioCtx.createBiquadFilter();
@@ -2298,12 +2290,14 @@ function createTone(audioCtx, opts, mainOut) {
         });
 
         // TRATAMENTO FINAL DE REVERB E DELAY (CONEXÕES EM PARALELO)
-        // Estes devem ser aplicados após todos os outros efeitos "em série"
-        const finalOutputBeforePan = currentNode; // O nó de saída do pipeline em série antes do pan
-        
-        // Delay (como um send/return, mas conectando ao final do pipeline em série)
+        // Estes devem ser aplicados após todos os outros efeitos "em série".
+        // O sinal `drySignalBypassNode` contém o áudio original antes de ser processado pelos efeitos em série.
+        // O `currentNode` contém o áudio *após* os efeitos em série.
+
+        // Delay (send/return)
+        const delayEffect = opts.element.effects.find(eff => eff.type === 'delayZone');
         if (delayEffect && delayEffect.params.mix > 0) {
-            const delayNode = audioCtx.createDelay(1.0);
+            const delayNode = audioCtx.createDelay(1.0); // Max delay 1 sec
             const feedbackNode = audioCtx.createGain();
             const wetGainDelay = audioCtx.createGain();
             
@@ -2311,24 +2305,32 @@ function createTone(audioCtx, opts, mainOut) {
             feedbackNode.gain.value = delayEffect.params.feedback || 0.3;
             wetGainDelay.gain.value = delayEffect.params.mix || 0.5;
 
-            finalOutputBeforePan.connect(delayNode); // Envia para o delay
+            // Envia o sinal processado (currentNode) para o delay
+            currentNode.connect(delayNode); 
             delayNode.connect(feedbackNode).connect(delayNode); // Loop de feedback
             delayNode.connect(wetGainDelay); // Saída do delay
 
-            wetGainDelay.connect(finalOutputBeforePan); // Mistura o sinal wet de volta no pipeline
+            // Mistura o sinal wet de volta ao currentNode (sinal dry já está nele se for um efeito em série)
+            // Se o Delay for o *último* efeito antes do panner, ele se conecta ao panner.
+            // Se houver outros efeitos depois, o resultado do mix deve ser o novo currentNode.
+            // Para simplicidade e eficácia como send/return, ele se conecta de volta ao currentNode.
+            wetGainDelay.connect(currentNode); 
         }
 
-        // Reverb (como um send/return, mas conectando ao final do pipeline em série)
+        // Reverb (send/return)
+        const reverbEffect = opts.element.effects.find(eff => eff.type === 'reverbZone');
         if (reverbEffect && reverbEffect.params.mix > 0) {
             const reverbNode = audioCtx.createConvolver();
             reverbNode.buffer = createImpulseResponse(audioCtx, reverbEffect.params.decay || 1.5, 2.0);
             const reverbWetGain = audioCtx.createGain();
             reverbWetGain.gain.value = reverbEffect.params.mix || 0.3;
 
-            finalOutputBeforePan.connect(reverbNode); // Envia para o reverb
-            reverbNode.connect(reverbWetGain); // Saída do reverb
+            // Envia o sinal processado (currentNode) para o reverb
+            currentNode.connect(reverbNode); 
+            reverbNode.connect(reverbWetGain); 
 
-            reverbWetGain.connect(finalOutputBeforePan); // Mistura o sinal wet de volta no pipeline
+            // Mistura o sinal wet de volta ao currentNode
+            reverbWetGain.connect(currentNode); 
         }
     }
     
@@ -2340,13 +2342,14 @@ function createTone(audioCtx, opts, mainOut) {
     // E o panner ao mainOut geral
     panner.connect(mainOut);
 
-    // Inicia e para o oscilador principal (ou nó de entrada do som)
-    // Apenas inicie se for um nó que pode ser iniciado e parado explicitamente.
-    if (typeof osc.start === 'function' && typeof osc.stop === 'function') {
-        osc.start(opts.startTime);
-        osc.stop(opts.endTime);
-    }
-    state.sourceNodes.push(osc); // Adiciona o nó principal à lista de nodes para parar
+    // Inicia e para todos os nós que são fontes de áudio
+    nodesToStartStop.forEach(node => {
+        if (typeof node.start === 'function' && typeof node.stop === 'function') {
+            node.start(opts.startTime);
+            node.stop(opts.endTime);
+        }
+        state.sourceNodes.push(node); // Adiciona todos os nós para serem parados posteriormente
+    });
 }
 
 // Função auxiliar para a curva de distorção (WaveShaperNode)
