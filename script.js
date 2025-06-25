@@ -42,7 +42,7 @@ const el = {
     exportStartHandle: d.getElementById('export-start-handle'),
     exportEndHandle: d.getElementById('export-end-handle'),
 
-   
+
     tools: {
         select: d.getElementById('select'), pencil: d.getElementById('pencil'), eraser: d.getElementById('eraser'), hand: d.getElementById('hand'),
         staccato: d.getElementById('staccato'), percussion: d.getElementById('percussion'),
@@ -80,6 +80,8 @@ let state = {
     isDrawing: false,
     isSelecting: false,
     isMoving: false,
+    isResizing: false, // NOVO: Estado para redimensionamento
+    resizeHandle: null, // NOVO: Armazena qual alça de redimensionamento está sendo usada
     selectionStart: null,
     selectionEnd: null,
     activeTool: 'pencil',
@@ -90,7 +92,7 @@ let state = {
     playbackStartTime: 0,
     animationFrameId: null,
     audioCtx: null,
-    sourceNodes: [], 
+    sourceNodes: [],
     composition: {
         strokes: [],
         symbols: []
@@ -180,14 +182,6 @@ function resizeAndRedraw() {
 function redrawAll() {
     ctx.clearRect(0, 0, el.canvas.width, el.canvas.height);
 
-    // ESTAS LINHAS ESTAVAM CAUSANDO O ZOOM DUPLO E DEVEM SER REMOVIDAS OU COMENTADAS.
-    // A transformação de zoom/escala deve ser controlada apenas pelo CSS.
-    // ctx.save();
-    // ctx.scale(state.zoomLevel, state.zoomLevel);
-
-    // O restante do código de desenho permanece o mesmo. Ele agora desenhará
-    // diretamente nas coordenadas do "mundo" (o canvas de 60000px), e o CSS
-    // se encarregará de exibir essa visualização com o zoom e scroll corretos.
     state.composition.strokes.forEach(stroke => {
         if (stroke.points.length < 2) return;
         drawElementWithEffects(stroke);
@@ -197,20 +191,16 @@ function redrawAll() {
     if (state.isSelecting) {
         drawMarquee();
     }
-    state.selectedElements.forEach(elementId => {
-        const element = findElementById(elementId);
-        if (element) {
-            drawSelectionIndicator(element);
-        }
-    });
 
-    // ESTA LINHA CORRESPONDIA AO CTX.SAVE() E TAMBÉM DEVE SER REMOVIDA/COMENTADA.
-    // ctx.restore();
-    
-    // As réguas são desenhadas separadamente e não são afetadas por esta mudança.
+    // A caixa de seleção agora é desenhada apenas uma vez se houver elementos selecionados.
+    if (state.selectedElements.length > 0) {
+        drawSelectionIndicator();
+    }
+
     drawRulers();
     updateExportSelectionVisuals();
 }
+
 
 function drawRulers() {
     xRulerCtx.clearRect(0, 0, el.xRulerCanvas.width, el.xRulerCanvas.height);
@@ -345,6 +335,33 @@ function setupEventListeners() {
 
     Object.keys(el.tools).forEach(key => el.tools[key]?.addEventListener('click', () => setActiveTool(key)));
 
+    // NOVO: Event listeners para edição de cor e espessura
+    el.colorPicker.addEventListener('input', (e) => {
+        if (state.selectedElements.length > 0) {
+            state.selectedElements.forEach(id => {
+                const elem = findElementById(id);
+                if (elem) elem.color = e.target.value;
+            });
+            saveState();
+            redrawAll();
+        }
+    });
+
+    el.lineWidth.addEventListener('input', (e) => {
+        if (state.selectedElements.length > 0) {
+            const newValue = parseFloat(e.target.value);
+            state.selectedElements.forEach(id => {
+                const elem = findElementById(id);
+                if (elem) {
+                    if (elem.points) elem.lineWidth = newValue;
+                    else elem.size = newValue;
+                }
+            });
+            saveState();
+            redrawAll();
+        }
+    });
+
     Object.keys(el.effectSliders).forEach(key => {
         const slider = el.effectSliders[key];
         const effectType = slider.dataset.effectType;
@@ -358,8 +375,7 @@ function setupEventListeners() {
         });
     });
 
-
-    Object.keys(el.globalEqSliders).forEach(key => { 
+    Object.keys(el.globalEqSliders).forEach(key => {
         const slider = el.globalEqSliders[key];
         slider?.addEventListener('input', () => {
             state.globalEqValues[key] = parseFloat(slider.value);
@@ -467,6 +483,7 @@ function getEventPos(e) {
 
     return { x: finalX, y: finalY };
 }
+
 function startAction(e) {
     if (e.target === el.playhead) {
         state.isDraggingPlayhead = true;
@@ -485,8 +502,19 @@ function startAction(e) {
 
     switch (state.activeTool) {
         case 'select': {
-            const clickedElement = getElementAtPos(pos);
             const isMultiSelect = e.ctrlKey || e.metaKey;
+
+            // NOVO: Verifica se o clique foi numa alça de redimensionamento
+            const resizeHandle = getResizeHandleAtPos(pos);
+            if (resizeHandle && state.selectedElements.length > 0) {
+                state.isResizing = true;
+                state.resizeHandle = resizeHandle;
+                el.canvas.style.cursor = getResizeCursor(resizeHandle);
+                redrawAll();
+                return;
+            }
+
+            const clickedElement = getElementAtPos(pos);
 
             if (clickedElement) {
                 const isAlreadySelected = state.selectedElements.includes(clickedElement.id);
@@ -498,23 +526,16 @@ function startAction(e) {
                         state.selectedElements.push(clickedElement.id);
                     }
                 } else {
-                    state.selectedElements = [clickedElement.id];
-                }
-
-                if (state.selectedElements.length > 0 && (!isMultiSelect || !isAlreadySelected)) {
-                    state.isMoving = true;
-                    el.canvas.style.cursor = 'move';
-                } else {
-                    state.isMoving = false;
-                    el.canvas.style.cursor = 'pointer';
+                    if (!isAlreadySelected) {
+                       state.selectedElements = [clickedElement.id];
+                    }
                 }
 
                 if (state.selectedElements.length > 0) {
-                    const firstSelectedElement = findElementById(state.selectedElements[0]);
-                    updateEffectSlidersForSelection(firstSelectedElement);
-                } else {
-                    resetEffectSliders();
+                    state.isMoving = true;
+                    el.canvas.style.cursor = 'move';
                 }
+
             } else {
                 state.isMoving = false;
                 state.isSelecting = true;
@@ -522,9 +543,9 @@ function startAction(e) {
                 state.selectionEnd = pos;
                 if (!isMultiSelect) {
                     state.selectedElements = [];
-                    resetEffectSliders();
                 }
             }
+            updateControlsForSelection(); // Atualiza cor, espessura e efeitos
             redrawAll();
             break;
         }
@@ -556,41 +577,51 @@ function startAction(e) {
     }
 }
 
+
 function stopAction(e) {
     if (!state.isDrawing) return;
     e.preventDefault();
 
-    if (state.isMoving) {
+    if (state.isMoving || state.isResizing) {
         state.isMoving = false;
-        el.canvas.style.cursor = 'pointer';
+        state.isResizing = false;
+        state.resizeHandle = null;
+        setActiveTool('select'); // Reseta o cursor
         saveState();
     }
 
+
     if (state.isSelecting) {
         const r1 = {
-            x: state.selectionStart.x,
-            y: state.selectionStart.y,
-            width: state.selectionEnd.x - state.selectionStart.x,
-            height: state.selectionEnd.y - state.selectionStart.y,
+            x: Math.min(state.selectionStart.x, state.selectionEnd.x),
+            y: Math.min(state.selectionStart.y, state.selectionEnd.y),
+            width: Math.abs(state.selectionEnd.x - state.selectionStart.x),
+            height: Math.abs(state.selectionEnd.y - state.selectionStart.y),
         };
 
         const allElements = [...state.composition.strokes, ...state.composition.symbols];
 
-        state.selectedElements = [];
+        const newlySelected = [];
         allElements.forEach(element => {
             const r2 = getElementBoundingBox(element);
             if (doRectsIntersect(r1, r2)) {
-                state.selectedElements.push(element.id);
+                newlySelected.push(element.id);
             }
         });
 
-        state.isSelecting = false;
-        if (state.selectedElements.length > 0) {
-            const firstSelectedElement = findElementById(state.selectedElements[0]);
-            updateEffectSlidersForSelection(firstSelectedElement);
+        if (e.ctrlKey || e.metaKey) {
+            newlySelected.forEach(id => {
+                if (!state.selectedElements.includes(id)) {
+                    state.selectedElements.push(id);
+                }
+            });
         } else {
-            resetEffectSliders();
+            state.selectedElements = newlySelected;
         }
+
+
+        state.isSelecting = false;
+        updateControlsForSelection();
         redrawAll();
     }
 
@@ -620,13 +651,29 @@ function performAction(e) {
         handlePlayheadDrag(e);
         return;
     }
-    if (!state.isDrawing) return;
+    if (!state.isDrawing) {
+        // NOVO: Altera o cursor ao passar sobre as alças de redimensionamento
+        if (state.activeTool === 'select' && state.selectedElements.length > 0) {
+            const pos = getEventPos(e);
+            const handle = getResizeHandleAtPos(pos);
+            el.canvas.style.cursor = handle ? getResizeCursor(handle) : 'pointer';
+        }
+        return;
+    }
     e.preventDefault();
     const pos = getEventPos(e);
+    const dx = pos.x - state.lastPos.x;
+    const dy = pos.y - state.lastPos.y;
+
+    if (state.isResizing) {
+        resizeSelectedElements(dx, dy, pos);
+        state.lastPos = pos;
+        redrawAll();
+        return;
+    }
+
 
     if (state.isMoving) {
-        const dx = pos.x - state.lastPos.x;
-        const dy = pos.y - state.lastPos.y;
         moveSelectedElements(dx, dy);
         state.lastPos = pos;
         redrawAll();
@@ -768,7 +815,7 @@ function handleClear() {
         state.historyIndex = -1;
         saveState(true);
         redrawAll();
-        resetEffectSliders();
+        updateControlsForSelection();
     }
 }
 
@@ -979,7 +1026,7 @@ function drawElementWithEffects(element) {
 function drawBaseElement(s, context) {
     context.beginPath();
     context.strokeStyle = s.color;
-    context.lineWidth = s.lineWidth;
+    context.lineWidth = s.points ? s.lineWidth : s.size;
     context.lineCap = 'round';
     context.lineJoin = 'round';
 
@@ -992,24 +1039,26 @@ function drawBaseElement(s, context) {
         context.stroke();
     } else {
         context.fillStyle = s.color;
+        const size = s.size;
         switch(s.type) {
-            case 'staccato': context.arc(s.x, s.y, s.size / 4, 0, 2 * Math.PI); context.fill(); break;
+            case 'staccato': context.arc(s.x, s.y, size / 4, 0, 2 * Math.PI); context.fill(); break;
             case 'percussion':
-                context.moveTo(s.x - s.size/2, s.y - s.size/2);
-                context.lineTo(s.x + s.size/2, s.y + s.size/2);
-                context.moveTo(s.x + s.size/2, s.y - s.size/2);
-                context.lineTo(s.x - s.size/2, s.y + s.size/2);
+                context.moveTo(s.x - size/2, s.y - size/2);
+                context.lineTo(s.x + size/2, s.y + size/2);
+                context.moveTo(s.x + size/2, s.y - size/2);
+                context.lineTo(s.x - size/2, s.y + size/2);
                 context.stroke();
                 break;
-            case 'arpeggio': context.lineWidth = Math.max(2, s.size / 15); context.moveTo(s.x - s.size, s.y + s.size/2); context.bezierCurveTo(s.x - s.size/2, s.y - s.size, s.x + s.size/2, s.y + s.size, s.x + s.size, s.y-s.size/2); context.stroke(); break;
+            case 'arpeggio': context.lineWidth = Math.max(2, size / 15); context.moveTo(s.x - size, s.y + size/2); context.bezierCurveTo(s.x - size/2, s.y - size, s.x + size/2, s.y + size, s.x + size, s.y-size/2); context.stroke(); break;
             case 'granular':
-                context.fillRect(s.x - s.size, s.y - s.size/2, s.size*2, s.size);
+                context.fillRect(s.x - size, s.y - size/2, size*2, size);
                 break;
-            case 'tremolo': context.moveTo(s.x - s.size, s.y); context.lineTo(s.x - s.size/2, s.y - s.size/2); context.lineTo(s.x, s.y); context.lineTo(s.x + s.size/2, s.y + s.size/2); context.lineTo(s.x + s.size, s.y); context.stroke(); break;
+            case 'tremolo': context.moveTo(s.x - size, s.y); context.lineTo(s.x - size/2, s.y - size/2); context.lineTo(s.x, s.y); context.lineTo(s.x + size/2, s.y + size/2); context.lineTo(s.x + size, s.y); context.stroke(); break;
             case 'line': context.moveTo(s.x, s.y); context.lineTo(s.endX, s.endY); context.stroke(); break;
         }
     }
 }
+
 
 function eraseAt(x, y) {
     let somethingWasErased = false;
@@ -1035,7 +1084,7 @@ function eraseAt(x, y) {
         if (bbox) {
             // Verifica se o círculo da borracha sequer toca a caixa do traço.
             // O 'eraseRadius' extra na verificação garante que a borda seja considerada.
-            const isNear = (x + eraseRadius > bbox.x && 
+            const isNear = (x + eraseRadius > bbox.x &&
                             x - eraseRadius < bbox.x + bbox.width &&
                             y + eraseRadius > bbox.y &&
                             y - eraseRadius < bbox.y + bbox.height);
@@ -1099,13 +1148,13 @@ function applyEffectToSelectedElements(effectType, sliderValue) {
 
             switch(effectType) {
                 case 'reverbZone':
-                    params.decay = (normalizedValue * 3.5) + 0.5; 
-                    params.mix = normalizedValue * 1.5; 
+                    params.decay = (normalizedValue * 3.5) + 0.5;
+                    params.mix = normalizedValue * 1.5;
                     break;
                 case 'delayZone':
                     params.time = normalizedValue * 0.75;
-                    params.feedback = normalizedValue * 0.9; 
-                    params.mix = normalizedValue * 1.5; 
+                    params.feedback = normalizedValue * 0.9;
+                    params.mix = normalizedValue * 1.5;
                 case 'volumeZone':
                     params.gain = (sliderValue / 100) * 2;
                     break;
@@ -1117,7 +1166,7 @@ function applyEffectToSelectedElements(effectType, sliderValue) {
                     params.depth = normalizedValue * 100;
                     break;
                 case 'lowpassFilter':
-                    params.frequency = FREQ_MIN + (FREQ_MAX - FREQ_MIN) * (1 - normalizedValue); 
+                    params.frequency = FREQ_MIN + (FREQ_MAX - FREQ_MIN) * (1 - normalizedValue);
                     params.Q = 10 * normalizedValue;
                     break;
                 case 'highpassFilter':
@@ -1188,15 +1237,27 @@ function applyEffectToSelectedElements(effectType, sliderValue) {
     redrawAll();
 }
 
-function updateEffectSlidersForSelection(element) { // O nome agora é um pouco enganoso, pois lida com múltiplos.
-    resetEffectSliders(); // Começa zerando tudo.
+// NOVO: Função unificada para atualizar todos os controles (cor, espessura, efeitos)
+// NOVO: Função unificada para atualizar todos os controles (cor, espessura, efeitos)
+function updateControlsForSelection() {
+    if (state.selectedElements.length === 0) {
+        resetEffectSliders();
+        return;
+    }
 
-    if (state.selectedElements.length === 0) return;
-
-    // Pega todos os objetos de elementos selecionados.
     const selectedObjects = state.selectedElements.map(id => findElementById(id)).filter(Boolean);
 
-    // Itera sobre cada slider de efeito.
+    // Atualizar Cor
+    const firstColor = selectedObjects[0].color;
+    const allSameColor = selectedObjects.every(el => el.color === firstColor);
+    el.colorPicker.value = allSameColor ? firstColor : '#000000';
+
+    // Atualizar Espessura
+    const firstSize = selectedObjects[0].points ? selectedObjects[0].lineWidth : selectedObjects[0].size;
+    const allSameSize = selectedObjects.every(el => (el.points ? el.lineWidth : el.size) === firstSize);
+    el.lineWidth.value = allSameSize ? firstSize : 5;
+
+    // Atualizar Sliders de Efeitos
     Object.keys(el.effectSliders).forEach(key => {
         const slider = el.effectSliders[key];
         const effectType = slider.dataset.effectType;
@@ -1206,8 +1267,6 @@ function updateEffectSlidersForSelection(element) { // O nome agora é um pouco 
         for (let i = 0; i < selectedObjects.length; i++) {
             const currentElement = selectedObjects[i];
             const effect = (currentElement.effects || []).find(e => e.type === effectType);
-            
-            // Calcula o valor do slider para o elemento atual (lógica de conversão).
             const sliderValue = getSliderValueFromEffect(effect, effectType, slider);
 
             if (i === 0) {
@@ -1218,42 +1277,42 @@ function updateEffectSlidersForSelection(element) { // O nome agora é um pouco 
             }
         }
 
+        slider.style.accentColor = ''; // Limpa a cor customizada
+
         if (allHaveSameValue) {
             slider.value = firstValue;
-            slider.style.opacity = '1'; // Estilo para estado normal.
-            slider.style.setProperty('--primary-glow', '#a972ff'); // Cor normal
+            slider.style.opacity = '1';
         } else {
-            // Estado "Misto": coloca o slider no meio e aplica um estilo diferente.
             const midValue = (parseFloat(slider.max) + parseFloat(slider.min)) / 2;
             slider.value = midValue;
-            slider.style.opacity = '0.7'; // Indica estado misto.
-            slider.style.setProperty('--primary-glow', '#888'); // Cor cinza para indicar estado misto
+            slider.style.opacity = '0.7';
+            slider.style.accentColor = '#888'; // Aplica a cor cinza para estado misto
         }
     });
 }
 
+
 // Função auxiliar para obter o valor do slider a partir de um efeito.
-// Esta função extrai a lógica de conversão que estava em `updateEffectSlidersForSelection`.
 function getSliderValueFromEffect(effect, effectType, slider) {
     if (!effect) {
-        // Se não há efeito, retorna o valor padrão do slider (geralmente 0 ou 100).
         switch (effectType) {
             case 'volumeZone': return 100;
             case 'panZone': return 0;
-            default: return 0;
+            default: return parseFloat(slider.min);
         }
     }
 
     let sliderValue;
-    // A mesma lógica de conversão de antes.
+    const normalizedToSlider = (norm) => (norm * (slider.max - slider.min)) + slider.min;
+
     switch (effectType) {
-        case 'reverbZone': sliderValue = (effect.params.mix || 0) / 1.5 * 100; break;
-        case 'delayZone': sliderValue = (effect.params.mix || 0) / 1.5 * 100; break;
+        case 'reverbZone': sliderValue = normalizedToSlider((effect.params.mix || 0) / 1.5); break;
+        case 'delayZone': sliderValue = normalizedToSlider((effect.params.mix || 0) / 1.5); break;
         case 'volumeZone': sliderValue = (effect.params.gain / 2) * 100; break;
         case 'panZone': sliderValue = effect.params.pan * 100; break;
-        case 'vibratoZone': sliderValue = (effect.params.depth / 100) * 100; break;
-        // Adicione os outros 'cases' da sua função original aqui...
-        default: sliderValue = 0;
+        case 'vibratoZone': sliderValue = normalizedToSlider(effect.params.depth / 100); break;
+        // Adicionar outros 'cases' conforme necessário...
+        default: sliderValue = parseFloat(slider.min);
     }
     return Math.max(parseFloat(slider.min), Math.min(parseFloat(slider.max), sliderValue));
 }
@@ -1268,20 +1327,15 @@ function resetEffectSliders() {
             case 'panZone':
                 neutralValue = 0;
                 break;
-            case 'lowpassFilter':
-                neutralValue = 0;
-                break;
-            case 'highpassFilter':
-                neutralValue = 0;
-                break;
             default:
-                neutralValue = 0;
+                neutralValue = slider.min || 0;
         }
         slider.value = neutralValue;
         state.currentEffectValues[slider.id] = neutralValue;
+        slider.style.opacity = '1';
+        slider.style.accentColor = ''; // Apenas remove qualquer cor customizada
     });
 }
-
 function moveSelectedElements(dx, dy) {
     state.selectedElements.forEach(id => {
         const element = findElementById(id);
@@ -1303,6 +1357,74 @@ function moveSelectedElements(dx, dy) {
     });
 }
 
+// NOVO: Função para redimensionar elementos
+function resizeSelectedElements(dx, dy) {
+    const collectiveBox = getSelectionBoundingBox();
+    if (!collectiveBox) return;
+
+    const handle = state.resizeHandle;
+    let scaleX = 1, scaleY = 1;
+    let originX, originY;
+
+    // Calcula os fatores de escala
+    if (handle.includes('right')) {
+        scaleX = (collectiveBox.width + dx) / collectiveBox.width;
+    } else if (handle.includes('left')) {
+        scaleX = (collectiveBox.width - dx) / collectiveBox.width;
+    }
+
+    if (handle.includes('bottom')) {
+        scaleY = (collectiveBox.height + dy) / collectiveBox.height;
+    } else if (handle.includes('top')) {
+        scaleY = (collectiveBox.height - dy) / collectiveBox.height;
+    }
+    
+    // Mantém proporção para alças de canto
+    if (handle.length > 2) {
+       const scale = Math.max(scaleX, scaleY);
+       scaleX = scale;
+       scaleY = scale;
+    }
+
+
+    // Define o ponto de origem da transformação (o lado oposto à alça)
+    if (handle.includes('right')) originX = collectiveBox.x;
+    else originX = collectiveBox.x + collectiveBox.width;
+
+    if (handle.includes('bottom')) originY = collectiveBox.y;
+    else originY = collectiveBox.y + collectiveBox.height;
+
+
+    state.selectedElements.forEach(id => {
+        const elem = findElementById(id);
+        if (!elem) return;
+
+        const transformPoint = (p) => {
+            p.x = originX + (p.x - originX) * scaleX;
+            p.y = originY + (p.y - originY) * scaleY;
+        };
+
+        if (elem.points) {
+            elem.points.forEach(transformPoint);
+        } else {
+            let p = { x: elem.x, y: elem.y };
+            transformPoint(p);
+            elem.x = p.x;
+            elem.y = p.y;
+
+            if (typeof elem.endX !== 'undefined') {
+                let pEnd = { x: elem.endX, y: elem.endY };
+                transformPoint(pEnd);
+                elem.endX = pEnd.x;
+                elem.endY = pEnd.y;
+            }
+            // Escala o tamanho dos símbolos também
+            elem.size *= Math.max(scaleX, scaleY);
+        }
+    });
+}
+
+
 function deleteSelectedElements() {
     if (state.selectedElements.length === 0) return;
     state.composition.strokes = state.composition.strokes.filter(s => !state.selectedElements.includes(s.id));
@@ -1310,7 +1432,7 @@ function deleteSelectedElements() {
     state.selectedElements = [];
     saveState();
     redrawAll();
-    resetEffectSliders();
+    updateControlsForSelection();
 }
 
 function copySelectedElements() {
@@ -1349,10 +1471,7 @@ function pasteElements() {
     state.selectedElements = newSelection;
     saveState();
     redrawAll();
-    if (state.selectedElements.length > 0) {
-        const firstSelectedElement = findElementById(state.selectedElements[0]);
-        updateEffectSlidersForSelection(firstSelectedElement);
-    }
+    updateControlsForSelection();
 }
 
 function findElementById(id) {
@@ -1385,9 +1504,10 @@ function getElementBoundingBox(element) {
              maxY = element.y + size / 2;
         }
     }
-    const margin = 5;
+    const margin = element.lineWidth ? element.lineWidth / 2 : 5;
     return { x: minX - margin, y: minY - margin, width: (maxX - minX) + 2 * margin, height: (maxY - minY) + 2 * margin };
 }
+
 
 function drawMarquee() {
     if (!state.isSelecting || !state.selectionStart || !state.selectionEnd) return;
@@ -1404,17 +1524,93 @@ function drawMarquee() {
     ctx.restore();
 }
 
-function drawSelectionIndicator(element) {
-    const box = getElementBoundingBox(element);
-    if (box) {
-        ctx.save();
-        ctx.strokeStyle = getComputedStyle(d.documentElement).getPropertyValue('--selection-glow').trim();
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([5, 5]);
-        ctx.strokeRect(box.x - 5, box.y - 5, box.width + 10, box.height + 10);
-        ctx.restore();
-    }
+// NOVO: Função que retorna a bounding box de toda a seleção
+function getSelectionBoundingBox() {
+    if (state.selectedElements.length === 0) return null;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+    state.selectedElements.forEach(id => {
+        const element = findElementById(id);
+        const box = getElementBoundingBox(element);
+        if (box) {
+            minX = Math.min(minX, box.x);
+            minY = Math.min(minY, box.y);
+            maxX = Math.max(maxX, box.x + box.width);
+            maxY = Math.max(maxY, box.y + box.height);
+        }
+    });
+
+    if (minX === Infinity) return null;
+
+    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
+
+// NOVO: Lógica de desenho da caixa de seleção e das alças foi movida para esta função
+function drawSelectionIndicator() {
+    const box = getSelectionBoundingBox();
+    if (!box) return;
+
+    ctx.save();
+    const selectionColor = getComputedStyle(d.documentElement).getPropertyValue('--selection-glow').trim();
+    ctx.strokeStyle = selectionColor;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 5]);
+    ctx.strokeRect(box.x, box.y, box.width, box.height);
+    ctx.setLineDash([]);
+
+    // Desenha as alças de redimensionamento
+    const handles = getResizeHandles(box);
+    ctx.fillStyle = selectionColor;
+    Object.values(handles).forEach(handle => {
+        ctx.fillRect(handle.x - handle.size / 2, handle.y - handle.size / 2, handle.size, handle.size);
+    });
+
+    ctx.restore();
+}
+
+// NOVO: Funções auxiliares para redimensionamento
+function getResizeHandles(box) {
+    if (!box) return {};
+    const handleSize = 8;
+    return {
+        'top-left':     { x: box.x, y: box.y, size: handleSize },
+        'top-right':    { x: box.x + box.width, y: box.y, size: handleSize },
+        'bottom-left':  { x: box.x, y: box.y + box.height, size: handleSize },
+        'bottom-right': { x: box.x + box.width, y: box.y + box.height, size: handleSize },
+        'top':          { x: box.x + box.width / 2, y: box.y, size: handleSize },
+        'bottom':       { x: box.x + box.width / 2, y: box.y + box.height, size: handleSize },
+        'left':         { x: box.x, y: box.y + box.height / 2, size: handleSize },
+        'right':        { x: box.x + box.width, y: box.y + box.height / 2, size: handleSize },
+    };
+}
+
+function getResizeHandleAtPos(pos) {
+    const box = getSelectionBoundingBox();
+    if (!box) return null;
+    const handles = getResizeHandles(box);
+    for (const name in handles) {
+        const handle = handles[name];
+        if (
+            pos.x >= handle.x - handle.size && pos.x <= handle.x + handle.size &&
+            pos.y >= handle.y - handle.size && pos.y <= handle.y + handle.size
+        ) {
+            return name;
+        }
+    }
+    return null;
+}
+
+function getResizeCursor(handleName) {
+    if (handleName.includes('top') && handleName.includes('left')) return 'nwse-resize';
+    if (handleName.includes('top') && handleName.includes('right')) return 'nesw-resize';
+    if (handleName.includes('bottom') && handleName.includes('left')) return 'nesw-resize';
+    if (handleName.includes('bottom') && handleName.includes('right')) return 'nwse-resize';
+    if (handleName.includes('top') || handleName.includes('bottom')) return 'ns-resize';
+    if (handleName.includes('left') || handleName.includes('right')) return 'ew-resize';
+    return 'move';
+}
+
 
 function isPointNearLine(p, a, b, tolerance) {
     const L2 = (b.x - a.x)**2 + (b.y - a.y)**2;
@@ -1428,13 +1624,15 @@ function isPointNearLine(p, a, b, tolerance) {
 
 function getElementAtPos(pos) {
     const tolerance = 10;
+    // Verifica primeiro os símbolos, que são desenhados por cima
     for (let i = state.composition.symbols.length - 1; i >= 0; i--) {
         const s = state.composition.symbols[i];
         const box = getElementBoundingBox(s);
-        if (box && pos.x >= box.x - tolerance && pos.x <= box.x + box.width + tolerance && pos.y >= box.y - tolerance && pos.y <= box.y + box.height + tolerance) {
+        if (box && pos.x >= box.x && pos.x <= box.x + box.width && pos.y >= box.y && pos.y <= box.y + box.height) {
             return s;
         }
     }
+    // Depois verifica os traços
     for (let i = state.composition.strokes.length - 1; i >= 0; i--) {
         const stroke = state.composition.strokes[i];
         const strokeTolerance = (stroke.lineWidth / 2) + tolerance;
@@ -1447,12 +1645,13 @@ function getElementAtPos(pos) {
     return null;
 }
 
+
 function doRectsIntersect(r1, r2) {
     if (!r1 || !r2) return false;
-    const selX1 = Math.min(r1.x, r1.x + r1.width);
-    const selX2 = Math.max(r1.x, r1.x + r1.width);
-    const selY1 = Math.min(r1.y, r1.y + r1.height);
-    const selY2 = Math.max(r1.y, r1.y + r1.height);
+    const selX1 = r1.x;
+    const selX2 = r1.x + r1.width;
+    const selY1 = r1.y;
+    const selY2 = r1.y + r1.height;
 
     const elX1 = r2.x;
     const elX2 = r2.x + r2.width;
@@ -1493,7 +1692,7 @@ function importProject(event) {
                 state.selectedElements = [];
                 redrawAll();
                 saveState();
-                resetEffectSliders();
+                updateControlsForSelection();
             } else {
                 throw new Error("Formato de arquivo inválido.");
             }
@@ -1547,7 +1746,7 @@ function undo() {
         state.composition.symbols.forEach(s => s.effects = s.effects || []);
 
         state.selectedElements = [];
-        resetEffectSliders();
+        updateControlsForSelection();
         localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(state.composition));
         redrawAll();
         updateUndoRedoButtons();
@@ -1563,7 +1762,7 @@ function redo() {
         state.composition.symbols.forEach(s => s.effects = s.effects || []);
 
         state.selectedElements = [];
-        resetEffectSliders();
+        updateControlsForSelection();
         localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(state.composition));
         redrawAll();
         updateUndoRedoButtons();
@@ -1637,7 +1836,7 @@ function stopPlayback() {
     state.sourceNodes.forEach(node => {
         try {
             if (node instanceof OscillatorNode || node instanceof AudioBufferSourceNode) {
-                node.stop(0); 
+                node.stop(0);
             }
             if (typeof node.disconnect === 'function') {
                 node.disconnect();
@@ -1849,7 +2048,7 @@ function createTone(audioCtx, opts, mainOut) {
     if (duration <= 0) return;
 
     const sourcesToStop = [];
-    const effectTailTime = 2.0; 
+    const effectTailTime = 2.0;
     let finalStopTime = opts.endTime;
 
     const hasReverbOrDelay = opts.element.effects.some(e => e.type === 'reverbZone' || e.type === 'delayZone');
@@ -2135,7 +2334,7 @@ function createTone(audioCtx, opts, mainOut) {
 
             currentNode.connect(delayNode);
             delayNode.connect(feedbackNode).connect(delayNode);
-            delayNode.connect(wetGainDelay); 
+            delayNode.connect(wetGainDelay);
             wetGainDelay.connect(mainOut);
         }
 
@@ -2147,7 +2346,7 @@ function createTone(audioCtx, opts, mainOut) {
             reverbWetGain.gain.value = reverbEffect.params.mix || 0.3;
 
             currentNode.connect(reverbNode);
-            reverbNode.connect(reverbWetGain); 
+            reverbNode.connect(reverbWetGain);
             reverbWetGain.connect(mainOut);
         }
     }
@@ -2373,7 +2572,7 @@ function exportJpgVisibleArea() {
 async function exportPdfPaginated() {
     // Mostra o overlay de carregamento para dar feedback ao usuário.
     el.loadingOverlay.classList.remove('hidden');
-    
+
     // Pequeno delay para garantir que o overlay seja renderizado antes do processamento pesado.
     await new Promise(resolve => setTimeout(resolve, 50));
 
@@ -2421,13 +2620,13 @@ async function exportPdfPaginated() {
             tempCtx.clearRect(0, 0, contentWidth, contentHeight);
             tempCtx.fillStyle = getComputedStyle(d.documentElement).getPropertyValue('--bg-dark').trim();
             tempCtx.fillRect(0, 0, contentWidth, contentHeight);
-            
+
             // Salva o estado do contexto.
             tempCtx.save();
-            
+
             // Aplica a escala para caber na altura da página.
             tempCtx.scale(scale, scale);
-            
+
             // Translada para a "fatia" correta da composição.
             tempCtx.translate(-i * scaledContentWidth, 0);
 
@@ -2658,20 +2857,20 @@ function bufferToWav(buffer) {
     let offset = 0;
     let pos = 0;
 
-    setUint32(0x46464952); 
-    setUint32(length - 8); 
-    setUint32(0x45564157); 
+    setUint32(0x46464952);
+    setUint32(length - 8);
+    setUint32(0x45564157);
 
-    setUint32(0x20746d66); 
-    setUint32(16); 
-    setUint16(1); 
+    setUint32(0x20746d66);
+    setUint32(16);
+    setUint16(1);
     setUint16(numOfChan);
     setUint32(buffer.sampleRate);
-    setUint32(buffer.sampleRate * 2 * numOfChan); 
-    setUint16(numOfChan * 2); 
-    setUint16(16); 
-    setUint32(0x61746164); 
-    setUint32(length - pos - 4); 
+    setUint32(buffer.sampleRate * 2 * numOfChan);
+    setUint16(numOfChan * 2);
+    setUint16(16);
+    setUint32(0x61746164);
+    setUint32(length - pos - 4);
 
     for (i = 0; i < buffer.numberOfChannels; i++) {
         channels.push(buffer.getChannelData(i));
