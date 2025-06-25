@@ -316,6 +316,9 @@ function setupMobileToolbar() {
 }
 
 function setupEventListeners() {
+        d.getElementById('manualBtn')?.addEventListener('click', () => {
+        window.open('manual.html', '_blank');
+    });
     window.addEventListener('resize', resizeAndRedraw);
     el.mainCanvasArea.addEventListener('scroll', redrawAll);
     el.xRulerCanvas.addEventListener('click', handleTimelineClick);

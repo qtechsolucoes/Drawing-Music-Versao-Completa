@@ -19,7 +19,7 @@
         <div class="background-animation"></div>
         <div class="selection-box text-center p-8 md:p-12 rounded-2xl">
 <div class="flex items-center justify-left gap-0 mb-2">
-    <img src="logotipo.png" alt="Logo do Music Drawing" class="w-16 h-16 md:w-16 md:h-16 logo-animada">
+    <img src="assets/logotipo.png" alt="Logo do Music Drawing" class="w-16 h-16 md:w-16 md:h-16 logo-animada">
     <h1 class="text-3xl md:text-5xl font-bold">Drawing Music</h1>
 </div>
             <p class="text-md md:text-lg text-slate-300 mb-10">Seja bem-vindo. Desenhe a sua música!</p>
@@ -35,7 +35,7 @@
         <div class="app-container w-full h-full flex flex-col rounded-2xl overflow-hidden">
          <header class="p-0 md:p-4 border-b flex justify-between items-center flex-shrink-0 flex-wrap gap-2">
     <div class="flex items-center gap-1">
-        <img src="logo roxa.png" alt="Logo do Music Drawing" class="w-16 h-16"> 
+        <img src="assets/logo roxa.png" alt="Logo do Music Drawing" class="w-16 h-16"> 
         
         <div>
             <h1 class="text-xl md:text-2xl font-bold title-accent">Drawing Music <span class="text-base font-normal align-middle subtitle-color"></span></h1>
@@ -44,6 +44,12 @@
     </div>
 
     <div class="flex items-center gap-2 md:gap-3 flex-wrap">
+        <button id="manualBtn" class="tool-btn" title="Manual de Uso">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+    </svg>
+</button>
                 <button id="theme-toggle" class="tool-btn" title="Alternar Tema"><svg id="theme-icon-sun" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0z" /></svg><svg id="theme-icon-moon" class="hidden" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg></button>
         <button id="saveProjectBtn" class="tool-btn" title="Salvar Projeto (.drawmus)"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg> <span class="hidden md:inline">Salvar</span></button>
         <button id="importProjectBtn" class="tool-btn" title="Importar Projeto (.drawmus)"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg> <span class="hidden md:inline">Importar</span></button>

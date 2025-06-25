@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual Definitivo - Drawing Music</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --text-color: #343a40;
+            --heading-color: #000000;
+            --bg-color: #f8f9fa;
+            --bg-alt-color: #ffffff;
+            --border-color: #dee2e6;
+            --primary-color: #6d28d9;
+            --code-bg-color: #e9ecef;
+            --tip-bg-color: #e7f5ff;
+            --tip-border-color: #90c0f0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Roboto', sans-serif;
+            line-height: 1.8;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+        }
+
+        .manual-container {
+            max-width: 1024px;
+            width: 100%;
+            padding: 20px 50px 60px 50px;
+            margin: 40px 20px;
+            box-sizing: border-box;
+            background-color: var(--bg-alt-color);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.05);
+        }
+
+        h1, h2, h3, h4 {
+            font-family: 'Poppins', sans-serif;
+            color: var(--heading-color);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 12px;
+            margin-top: 40px;
+            margin-bottom: 24px;
+            font-weight: 600;
+        }
+
+        h1 { font-size: 3rem; text-align: center; border-bottom: 2px solid var(--heading-color); font-weight: 700; }
+        h2 { font-size: 2.2rem; }
+        h3 { font-size: 1.6rem; color: var(--primary-color); }
+        h4 { font-size: 1.2rem; border-bottom: none; margin-top: 24px; font-weight: 700; }
+
+        p, li { margin-bottom: 16px; font-size: 1.1rem; }
+        ul { list-style-position: outside; padding-left: 25px; }
+        strong { font-weight: 700; color: #000; }
+        code { background-color: var(--code-bg-color); color: #c7254e; padding: 4px 8px; border-radius: 6px; font-family: 'SFMono-Regular', Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 1rem; }
+        
+        .section { margin-bottom: 50px; }
+        .intro-p { font-size: 1.25rem; text-align: center; color: #495057; margin-bottom: 50px; }
+        .manual-image { width: 100%; border-radius: 8px; border: 1px solid var(--border-color); margin: 24px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        
+        blockquote {
+            background-color: var(--tip-bg-color);
+            border-left: 5px solid var(--tip-border-color);
+            margin: 24px 0;
+            padding: 16px 24px;
+            border-radius: 0 8px 8px 0;
+        }
+        blockquote p { font-size: 1.05rem; margin-bottom: 0; }
+    </style>
+</head>
+<body>
+
+    <div class="manual-container">
+        <h1>Manual Definitivo do Drawing Music</h1>
+        <p class="intro-p">Liberte o artista e o músico que há em si. Este guia detalha cada ferramenta, conceito e truque para que possa dominar o Drawing Music e criar composições incríveis.</p>
+        
+        <div class="section">
+            <h2>1. Conceitos Fundamentais: Como o Som é Desenhado</h2>
+            <p>Antes de começar, é crucial entender a lógica da nossa pauta musical.</p>
+            <img src="https://via.placeholder.com/1024x400/CCCCCC/FFFFFF?text=Substitua+pela+imagem+do+Canvas+com+as+Réguas" alt="Visão Geral da Interface" class="manual-image">
+            <ul>
+                <li><strong>O Eixo do Tempo (Horizontal):</strong> A régua abaixo do canvas  representa o tempo da sua música, medido em segundos. Quanto mais à direita você desenha, mais tarde o som irá tocar.</li>
+                <li><strong>O Eixo da Frequência (Vertical):</strong> A régua à esquerda representa a frequência do som, ou seja, a <strong>nota musical</strong>. Desenhos na parte inferior da pauta produzem sons <strong>graves</strong>, enquanto desenhos na parte superior produzem sons <strong>agudos</strong>. Esta escala é logarítmica, imitando a forma como o ouvido humano percebe as notas.</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>2. As Ferramentas Criativas</h2>
+            <p>A barra lateral é o seu arsenal. Cada ferramenta oferece uma forma diferente de criar ou manipular som.</p>
+            
+            <h3>Ferramenta Seletor: O Seu Bisturi de Edição</h3>
+            <p>Esta é a ferramenta mais poderosa para refinar a sua composição. Um bom domínio do Seletor irá acelerar drasticamente o seu trabalho.</p>
+            <img src="https://via.placeholder.com/600x400/CCCCCC/FFFFFF?text=Substitua+pela+imagem+de+um+elemento+selecionado" alt="Elemento Selecionado" class="manual-image" style="max-width: 600px;">
+            <ul>
+                <li><strong>Seleção Individual e Múltipla:</strong> Clique para selecionar um elemento. Mantenha <code>Ctrl</code> (ou <code>Cmd</code>) para adicionar mais elementos à sua seleção, permitindo a edição em grupo.</li>
+                <li><strong>Seleção em Área:</strong> Clique numa área vazia e arraste. Um retângulo aparecerá, selecionando tudo o que tocar.</li>
+                <li><strong>Manipulação Direta:</strong>
+                    <ul>
+                        <li><strong>Mover:</strong> Arraste uma seleção para a reposicionar no tempo e na frequência.</li>
+                        <li><strong>Redimensionar:</strong> Arraste as <strong>alças</strong> (os quadrados nos cantos e lados) para aumentar ou diminuir o tamanho da sua seleção. Isto afeta a duração e a variação de notas de um desenho.</li>
+                    </ul>
+                </li>
+            </ul>
+            <blockquote>
+                <p><strong>Dica Pro:</strong> Após criar uma batida ou melodia curta, use o Seletor para a copiar (<code>Ctrl+C</code>) e colar (<code>Ctrl+V</code>) várias vezes, criando um loop ou padrão rítmico rapidamente.</p>
+            </blockquote>
+
+            <h3>Ferramentas de Desenho</h3>
+            <ul>
+                <li><strong>Lápis:</strong> Perfeito para melodias expressivas. A sua forma livre permite criar vibratos subtis (ondulando a linha) ou subidas e descidas rápidas de nota.</li>
+                <li><strong>Linha Reta:</strong> A ferramenta para <strong>glissandos</strong> (deslizar suavemente entre duas notas) e notas sustentadas. Clique para o ponto de partida e clique novamente para o ponto final.</li>
+                <li><strong>Borracha:</strong> Apague erros sem afetar o resto da sua criação.</li>
+                <li><strong>Mão:</strong> Navegue pela sua pauta sem medo de editar algo acidentalmente. Use o scroll do rato para navegar na horizontal e <code>Shift + Scroll</code> para navegar na vertical.</li>
+            </ul>
+
+            <h3>Pincéis Especiais: Adicione Caráter</h3>
+            <p>Estes pincéis inserem "eventos sonoros" pré-definidos com um só clique. São ideais para ritmo e ornamentação.</p>
+            <ul>
+                <li><strong>Staccato:</strong> Uma nota curta e picada. Ótima para ritmos pontuados.</li>
+                <li><strong>Percussão:</strong> Um som de batida sem nota definida. Use vários em sequência para criar uma linha de bateria.</li>
+                <li><strong>Arpejo:</strong> Toca as notas de um acorde rapidamente, uma após a outra. Adiciona um toque melódico e harmonioso.</li>
+                <li><strong>Nuvem Granular:</strong> Gera uma "textura" sonora, desconstruindo o som em pequenos grãos. Ideal para criar ambientes e atmosferas.</li>
+                <li><strong>Trêmolo:</strong> Repete uma nota muito rapidamente, criando uma sensação de urgência ou instabilidade.</li>
+            </ul>
+        </div>
+        
+        <div class="section">
+            <h2>3. Esculpindo o Som: Estilo, Efeitos e Timbres</h2>
+            <p>O som não é apenas a nota e a duração. É a cor, a textura e o ambiente. É aqui que você se torna um verdadeiro designer de som.</p>
+            <img src="https://via.placeholder.com/400x600/CCCCCC/FFFFFF?text=Substitua+pela+imagem+dos+painéis+de+Estilo,+Efeitos+e+Timbres" alt="Painel de Controlo" class="manual-image" style="max-width: 400px;">
+
+            <h3>Estilo e Equalizador Global</h3>
+            <ul>
+                <li><strong>Cor e Espessura:</strong> Defina o aspeto visual e, mais importante, o <strong>volume base</strong> de um som. Linhas mais espessas resultam num som com mais presença.</li>
+                <li><strong>Equalizador Global (EQ):</strong> Pense nisto como o controlo de tom mestre do seu sistema de som. Afeta toda a música. Se a sua composição soa "lamacenta", experimente cortar um pouco os <strong>Graves</strong>. Se soa "abafada", aumente os <strong>Agudos</strong>.</li>
+            </ul>
+
+            <h3>Efeitos: O Seu Estúdio Virtual</h3>
+            <p>Os efeitos são aplicados aos elementos que você <strong>selecionou</strong>. Permitem transformar um som simples em algo complexo e profissional.</p>
+            <ul>
+                <li><strong>Reverb:</strong> Adiciona a sensação de espaço. Um pouco de reverb pode fazer a sua música soar menos "seca" e mais natural.</li>
+                <li><strong>Delay:</strong> Cria ecos. Útil para efeitos rítmicos ou para dar uma sensação de profundidade.</li>
+                <li><strong>Filtros (Passa-Baixo, Passa-Alto, etc.):</strong> Ferramentas poderosas para esculpir o som. Um filtro <strong>Passa-Baixo (Low Pass)</strong> remove as frequências agudas, tornando o som mais suave e abafado. É ótimo para fazer um som parecer que está a vir de longe.</li>
+                <li><strong>Modulação (Chorus, Phaser, Flanger):</strong> Adicionam movimento e complexidade. O <strong>Chorus</strong>, por exemplo, duplica o som com uma ligeira desafinação, dando a impressão de vários instrumentos a tocar juntos.</li>
+                <li><strong>Dinâmica e Textura (Distorção, Compressor):</strong> A <strong>Distorção</strong> adiciona uma saturação agressiva, enquanto o <strong>Compressor</strong> equilibra os picos de volume, tornando o som geral mais coeso e "polido".</li>
+            </ul>
+             <blockquote>
+                <p><strong>Estado Misto:</strong> Se selecionar dois elementos, um com reverb e outro sem, o slider de Reverb ficará cinzento. Mover o slider aplicará o novo valor a <strong>ambos</strong> os elementos, unificando a configuração.</p>
+            </blockquote>
+
+            <h3>Timbres: A Identidade do Som</h3>
+            <p>O timbre é a "personalidade" do som. O Drawing Music oferece uma paleta de timbres de sintetizador clássicos para o seu Lápis e Linha.</p>
+            <ul>
+                <li><strong>Sine (Senoide):</strong> O som mais puro e suave, como uma flauta. Ótimo para baixos e melodias limpas.</li>
+                <li><strong>Square (Quadrada):</strong> Um som mais "oco" e eletrónico, reminiscente de videojogos antigos.</li>
+                <li><strong>Sawtooth (Dente de Serra):</strong> Um som brilhante e "áspero", cheio de harmónicos. Perfeito para leads e sons agressivos.</li>
+                <li><strong>Triangle (Triangular):</strong> Um som a meio caminho entre a suavidade da senoide e a estridência da quadrada.</li>
+            </ul>
+        </div>
+        
+        <div class="section">
+            <h2>4. Gestão do Projeto</h2>
+            <p>Guardar, carregar e partilhar as suas obras-primas é fundamental.</p>
+            <img src="https://via.placeholder.com/1024x100/CCCCCC/FFFFFF?text=Substitua+pela+imagem+dos+controlos+do+cabeçalho" alt="Controlos do Cabeçalho" class="manual-image">
+            
+            <h3>Salvar e Importar</h3>
+            <ul>
+                <li><strong>Salvar Projeto:</strong> A ação mais importante! Salva o seu trabalho num ficheiro <code>.drawmus</code>. Este formato especial guarda cada detalhe, permitindo-lhe reabrir o projeto e continuar exatamente de onde parou. Crie o hábito de salvar com frequência!</li>
+                <li><strong>Importar Projeto:</strong> Abre um ficheiro <code>.drawmus</code> que você ou outra pessoa criou.</li>
+            </ul>
+            
+            <h3>Exportar: Partilhe a Sua Arte</h3>
+            <ul>
+                <li><strong>JPG:</strong> Cria uma "fotografia" da sua composição visual.</li>
+                <li><strong>PDF:</strong> Gera um documento de alta resolução, ideal para impressão ou para partilhar uma partitura visual.</li>
+                <li><strong>WAV:</strong> Exporta a sua música como um ficheiro de áudio de alta qualidade.
+                    <blockquote>
+                        <p><strong>Dica de Exportação WAV:</strong> Use as <strong>duas alças</strong> na régua de tempo inferior para definir com precisão o início e o fim do trecho de áudio que deseja exportar. Arraste-as para isolar um loop, um refrão ou a música inteira.</p>
+                    </blockquote>
+                </li>
+            </ul>
+            
+             <h3>Atalhos Essenciais</h3>
+            <p>Acelere o seu fluxo de trabalho memorizando estes atalhos:</p>
+            <ul>
+                <li><strong>Tocar/Parar:</strong> <code>Barra de Espaço</code></li>
+                <li><strong>Desfazer/Refazer:</strong> <code>Ctrl+Z</code> / <code>Ctrl+Y</code></li>
+                <li><strong>Copiar/Colar:</strong> <code>Ctrl+C</code> / <code>Ctrl+V</code></li>
+                <li><strong>Apagar Seleção:</strong> <code>Delete</code> / <code>Backspace</code></li>
+                <li><strong>Zoom:</strong> <code>Ctrl +</code> e <code>Ctrl -</code></li>
+            </ul>
+        </div>
+
+    </div>
+
+</body>
+</html>
