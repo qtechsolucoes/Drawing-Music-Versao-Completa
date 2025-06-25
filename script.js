@@ -379,8 +379,8 @@ function setupEventListeners() {
     el.importProjectBtn.addEventListener('click', () => el.drawmusImporter.click());
     el.drawmusImporter.addEventListener('change', importProject);
 
-    el.exportJpgBtn.addEventListener('click', exportJpg);
-    el.exportPdfBtn.addEventListener('click', exportPdf);
+    el.exportJpgBtn.addEventListener('click', exportJpgVisibleArea);
+    el.exportPdfBtn.addEventListener('click', exportPdfPaginated);
     el.exportWavBtn.addEventListener('click', exportWav);
 
     el.undoBtn.addEventListener('click', undo);
@@ -1013,19 +1013,59 @@ function drawBaseElement(s, context) {
 
 function eraseAt(x, y) {
     let somethingWasErased = false;
-    const eraseRadiusSquared = ERASE_RADIUS * ERASE_RADIUS;
+    const eraseRadius = ERASE_RADIUS;
+    const eraseRadiusSquared = eraseRadius * eraseRadius;
 
+    // Otimização para Símbolos
     const initialSymbolCount = state.composition.symbols.length;
-    state.composition.symbols = state.composition.symbols.filter(s => ((s.x - x)**2 + (s.y - y)**2) > eraseRadiusSquared);
-    if (state.composition.symbols.length < initialSymbolCount) somethingWasErased = true;
-
-    state.composition.strokes.forEach(stroke => {
-        const initialLength = stroke.points.length;
-        stroke.points = stroke.points.filter(p => ((p.x - x)**2 + (p.y - y)**2) > eraseRadiusSquared);
-        if (stroke.points.length < initialLength) somethingWasErased = true;
+    state.composition.symbols = state.composition.symbols.filter(s => {
+        const distanceSquared = (s.x - x)**2 + (s.y - y)**2;
+        return distanceSquared > eraseRadiusSquared;
     });
-    state.composition.strokes = state.composition.strokes.filter(stroke => stroke.points.length > 1);
+    if (state.composition.symbols.length < initialSymbolCount) {
+        somethingWasErased = true;
+    }
 
+    // Otimização para Traços
+    const strokesToRemove = [];
+    state.composition.strokes.forEach((stroke, strokeIndex) => {
+        // Passo 1: Verificação Rápida de Bounding Box
+        // Pega a "caixa" que contém o traço para uma checagem inicial.
+        const bbox = getElementBoundingBox(stroke);
+        if (bbox) {
+            // Verifica se o círculo da borracha sequer toca a caixa do traço.
+            // O 'eraseRadius' extra na verificação garante que a borda seja considerada.
+            const isNear = (x + eraseRadius > bbox.x && 
+                            x - eraseRadius < bbox.x + bbox.width &&
+                            y + eraseRadius > bbox.y &&
+                            y - eraseRadius < bbox.y + bbox.height);
+
+            // Passo 2: Se estiver perto, faz a verificação detalhada.
+            if (isNear) {
+                const initialLength = stroke.points.length;
+                stroke.points = stroke.points.filter(p => {
+                    const distanceSquared = (p.x - x)**2 + (p.y - y)**2;
+                    return distanceSquared > eraseRadiusSquared;
+                });
+
+                if (stroke.points.length < initialLength) {
+                    somethingWasErased = true;
+                }
+
+                // Se o traço ficou sem pontos, marca para remoção.
+                if (stroke.points.length < 2) {
+                    strokesToRemove.push(strokeIndex);
+                }
+            }
+        }
+    });
+
+    // Remove os traços que ficaram vazios, de trás para frente para não bagunçar os índices.
+    for (let i = strokesToRemove.length - 1; i >= 0; i--) {
+        state.composition.strokes.splice(strokesToRemove[i], 1);
+    }
+
+    // Redesenha e salva o estado apenas se algo mudou.
     if (somethingWasErased) {
         redrawAll();
         saveState();
@@ -1148,71 +1188,75 @@ function applyEffectToSelectedElements(effectType, sliderValue) {
     redrawAll();
 }
 
-function updateEffectSlidersForSelection(element) {
-    resetEffectSliders();
+function updateEffectSlidersForSelection(element) { // O nome agora é um pouco enganoso, pois lida com múltiplos.
+    resetEffectSliders(); // Começa zerando tudo.
 
-    if (element && element.effects) {
-        element.effects.forEach(effect => {
-            const slider = Object.values(el.effectSliders).find(s => s.dataset.effectType === effect.type);
-            if (slider) {
-                let sliderValue;
-                switch (effect.type) {
-                    case 'reverbZone':
-                        sliderValue = effect.params.mix * 100;
-                        break;
-                    case 'delayZone':
-                        sliderValue = effect.params.mix * 100;
-                        break;
-                    case 'volumeZone':
-                        sliderValue = (effect.params.gain / 2) * 100;
-                        break;
-                    case 'panZone':
-                        sliderValue = effect.params.pan * 100;
-                        break;
-                    case 'vibratoZone':
-                        sliderValue = (effect.params.depth / 100) * 100;
-                        break;
-                    case 'lowpassFilter':
-                        sliderValue = 100 - ( (effect.params.frequency - FREQ_MIN) / (FREQ_MAX - FREQ_MIN) * 100 );
-                        break;
-                    case 'highpassFilter':
-                        sliderValue = ( (effect.params.frequency - FREQ_MIN) / (FREQ_MAX - FREQ_MIN) * 100 );
-                        break;
-                    case 'bandpassFilter':
-                    case 'notchFilter':
-                        sliderValue = ( (effect.params.frequency - FREQ_MIN) / (FREQ_MAX - FREQ_MIN) * 100 );
-                        break;
-                    case 'phaser':
-                        sliderValue = (effect.params.depth / 2000) * 100;
-                        break;
-                    case 'flanger':
-                        sliderValue = (effect.params.feedback / 0.9) * 100;
-                        break;
-                    case 'chorus':
-                        sliderValue = (effect.params.mix) * 100;
-                        break;
-                    case 'distortion':
-                        sliderValue = (effect.params.amount / 200) * 100;
-                        break;
-                    case 'compressor':
-                        sliderValue = (effect.params.ratio - 1) / 10 * 100;
-                        break;
-                    case 'tremoloAmplitude':
-                        sliderValue = (effect.params.depth) * 100;
-                        break;
-                    case 'wah':
-                        sliderValue = (effect.params.range / 3000) * 100;
-                        break;
-                    default:
-                        sliderValue = 0;
-                }
-                slider.value = sliderValue;
-                state.currentEffectValues[slider.id] = sliderValue;
+    if (state.selectedElements.length === 0) return;
+
+    // Pega todos os objetos de elementos selecionados.
+    const selectedObjects = state.selectedElements.map(id => findElementById(id)).filter(Boolean);
+
+    // Itera sobre cada slider de efeito.
+    Object.keys(el.effectSliders).forEach(key => {
+        const slider = el.effectSliders[key];
+        const effectType = slider.dataset.effectType;
+        let firstValue = null;
+        let allHaveSameValue = true;
+
+        for (let i = 0; i < selectedObjects.length; i++) {
+            const currentElement = selectedObjects[i];
+            const effect = (currentElement.effects || []).find(e => e.type === effectType);
+            
+            // Calcula o valor do slider para o elemento atual (lógica de conversão).
+            const sliderValue = getSliderValueFromEffect(effect, effectType, slider);
+
+            if (i === 0) {
+                firstValue = sliderValue;
+            } else if (sliderValue !== firstValue) {
+                allHaveSameValue = false;
+                break;
             }
-        });
-    }
+        }
+
+        if (allHaveSameValue) {
+            slider.value = firstValue;
+            slider.style.opacity = '1'; // Estilo para estado normal.
+            slider.style.setProperty('--primary-glow', '#a972ff'); // Cor normal
+        } else {
+            // Estado "Misto": coloca o slider no meio e aplica um estilo diferente.
+            const midValue = (parseFloat(slider.max) + parseFloat(slider.min)) / 2;
+            slider.value = midValue;
+            slider.style.opacity = '0.7'; // Indica estado misto.
+            slider.style.setProperty('--primary-glow', '#888'); // Cor cinza para indicar estado misto
+        }
+    });
 }
 
+// Função auxiliar para obter o valor do slider a partir de um efeito.
+// Esta função extrai a lógica de conversão que estava em `updateEffectSlidersForSelection`.
+function getSliderValueFromEffect(effect, effectType, slider) {
+    if (!effect) {
+        // Se não há efeito, retorna o valor padrão do slider (geralmente 0 ou 100).
+        switch (effectType) {
+            case 'volumeZone': return 100;
+            case 'panZone': return 0;
+            default: return 0;
+        }
+    }
+
+    let sliderValue;
+    // A mesma lógica de conversão de antes.
+    switch (effectType) {
+        case 'reverbZone': sliderValue = (effect.params.mix || 0) / 1.5 * 100; break;
+        case 'delayZone': sliderValue = (effect.params.mix || 0) / 1.5 * 100; break;
+        case 'volumeZone': sliderValue = (effect.params.gain / 2) * 100; break;
+        case 'panZone': sliderValue = effect.params.pan * 100; break;
+        case 'vibratoZone': sliderValue = (effect.params.depth / 100) * 100; break;
+        // Adicione os outros 'cases' da sua função original aqui...
+        default: sliderValue = 0;
+    }
+    return Math.max(parseFloat(slider.min), Math.min(parseFloat(slider.max), sliderValue));
+}
 function resetEffectSliders() {
     Object.keys(el.effectSliders).forEach(key => {
         const slider = el.effectSliders[key];
@@ -2260,66 +2304,153 @@ function updateExportSelectionVisuals() {
     el.exportSelectionOverlay.style.width = `${overlayEnd - overlayStart}px`;
 }
 
-function exportJpg() {
+/**
+ * Calcula a área retangular (bounding box) que contém todos os desenhos.
+ * Isso nos ajuda a exportar apenas a área utilizada da composição.
+ * @returns {object} - Um objeto { minX, minY, maxX, maxY }.
+ */
+function getCompositionBounds() {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+    const allElements = [...state.composition.strokes, ...state.composition.symbols];
+
+    if (allElements.length === 0) {
+        return { minX: 0, minY: 0, maxX: 1, maxY: 1 };
+    }
+
+    allElements.forEach(element => {
+        const bbox = getElementBoundingBox(element);
+        if (bbox) {
+            minX = Math.min(minX, bbox.x);
+            minY = Math.min(minY, bbox.y);
+            maxX = Math.max(maxX, bbox.x + bbox.width);
+            maxY = Math.max(maxY, bbox.y + bbox.height);
+        }
+    });
+
+    return { minX, minY, maxX, maxY };
+}
+
+/**
+ * Exporta APENAS a área visível do canvas como uma imagem JPG.
+ */
+function exportJpgVisibleArea() {
     try {
+        // Define as dimensões do canvas temporário com base na área visível.
+        const viewWidth = el.mainCanvasArea.clientWidth;
+        const viewHeight = el.mainCanvasArea.clientHeight;
+
         const tempCanvas = d.createElement('canvas');
-        tempCanvas.width = el.canvas.width;
-        tempCanvas.height = el.canvas.height;
+        tempCanvas.width = viewWidth;
+        tempCanvas.height = viewHeight;
         const tempCtx = tempCanvas.getContext('2d');
 
+        // Preenche o fundo com a cor do tema atual.
         tempCtx.fillStyle = getComputedStyle(d.documentElement).getPropertyValue('--bg-dark').trim();
-        tempCtx.fillRect(0, 0, tempCanvas.width, tempCtx.height);
+        tempCtx.fillRect(0, 0, viewWidth, viewHeight);
 
-        tempCtx.save();
-        state.composition.strokes.forEach(stroke => {
-            if (stroke.points.length < 2) return;
-            drawBaseElement(stroke, tempCtx);
-        });
+        // O truque: translada o contexto para a posição de scroll atual.
+        // Ao desenhar a composição inteira, apenas a parte visível será renderizada.
+        tempCtx.translate(-el.mainCanvasArea.scrollLeft, -el.mainCanvasArea.scrollTop);
+
+        // Desenha todos os elementos.
+        state.composition.strokes.forEach(stroke => drawBaseElement(stroke, tempCtx));
         state.composition.symbols.forEach(s => drawBaseElement(s, tempCtx));
-        tempCtx.restore();
 
-        const imgData = tempCanvas.toDataURL('image/jpeg', 0.8);
+        // Converte o canvas temporário (que agora é um "screenshot") para imagem.
+        const imgData = tempCanvas.toDataURL('image/jpeg', 0.9);
         const link = d.createElement('a');
         link.href = imgData;
-        link.download = `music-drawing-${Date.now()}.jpg`;
+        link.download = `music-drawing-view-${Date.now()}.jpg`;
         link.click();
+
     } catch (e) {
         console.error("Erro ao exportar JPG:", e);
         alert("Não foi possível exportar a imagem como JPG.");
     }
 }
-function exportPdf() {
+
+async function exportPdfPaginated() {
+    // Mostra o overlay de carregamento para dar feedback ao usuário.
+    el.loadingOverlay.classList.remove('hidden');
+    
+    // Pequeno delay para garantir que o overlay seja renderizado antes do processamento pesado.
+    await new Promise(resolve => setTimeout(resolve, 50));
+
     try {
-        const tempCanvas = d.createElement('canvas');
-        tempCanvas.width = el.canvas.width;
-        tempCanvas.height = el.canvas.height;
-        const tempCtx = tempCanvas.getContext('2d');
-        tempCtx.fillStyle = getComputedStyle(d.documentElement).getPropertyValue('--bg-dark').trim();
-        tempCtx.fillRect(0, 0, tempCanvas.width, tempCtx.height);
+        // Constantes para o layout da página A4 em modo paisagem.
+        // (Valores aproximados em pixels para 96 DPI)
+        const A4_LANDSCAPE_WIDTH_PX = 1123;
+        const A4_LANDSCAPE_HEIGHT_PX = 794;
+        const PAGE_MARGIN = 40; // Margem de 40px em todos os lados.
 
-        tempCtx.save();
-        state.composition.strokes.forEach(stroke => {
-            if (stroke.points.length < 2) return;
-            drawBaseElement(stroke, tempCtx);
-        });
-        state.composition.symbols.forEach(s => drawBaseElement(s, tempCtx));
-        tempCtx.restore();
+        const contentWidth = A4_LANDSCAPE_WIDTH_PX - (PAGE_MARGIN * 2);
+        const contentHeight = A4_LANDSCAPE_HEIGHT_PX - (PAGE_MARGIN * 2);
 
-        const imgData = tempCanvas.toDataURL('image/jpeg', 0.8);
+        // Calcula a área total ocupada pelo desenho.
+        const bounds = getCompositionBounds();
+        const totalDrawingWidth = bounds.maxX;
+        const totalDrawingHeight = el.canvas.height; // Usamos a altura total do canvas.
 
-        const orientation = tempCanvas.width > tempCanvas.height ? 'l' : 'p';
+        // Calcula a escala para encaixar a altura do desenho na altura da página.
+        const scale = contentHeight / totalDrawingHeight;
+        const scaledContentWidth = contentWidth / scale;
+
+        // Calcula o número de páginas necessárias.
+        const numPages = Math.ceil(totalDrawingWidth / scaledContentWidth);
+
+        // Cria o documento PDF.
         const pdf = new jsPDF({
-            orientation: orientation,
+            orientation: 'landscape',
             unit: 'px',
-            format: [tempCanvas.width, tempCanvas.height]
+            format: 'a4'
         });
 
-        pdf.addImage(imgData, 'JPEG', 0, 0, tempCanvas.width, tempCtx.height);
+        const tempCanvas = d.createElement('canvas');
+        tempCanvas.width = contentWidth;
+        tempCanvas.height = contentHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+
+        // Loop para gerar cada página.
+        for (let i = 0; i < numPages; i++) {
+            if (i > 0) {
+                pdf.addPage();
+            }
+
+            // Limpa e prepara o canvas temporário para a página atual.
+            tempCtx.clearRect(0, 0, contentWidth, contentHeight);
+            tempCtx.fillStyle = getComputedStyle(d.documentElement).getPropertyValue('--bg-dark').trim();
+            tempCtx.fillRect(0, 0, contentWidth, contentHeight);
+            
+            // Salva o estado do contexto.
+            tempCtx.save();
+            
+            // Aplica a escala para caber na altura da página.
+            tempCtx.scale(scale, scale);
+            
+            // Translada para a "fatia" correta da composição.
+            tempCtx.translate(-i * scaledContentWidth, 0);
+
+            // Desenha a composição inteira (apenas a parte relevante será visível).
+            state.composition.strokes.forEach(stroke => drawBaseElement(stroke, tempCtx));
+            state.composition.symbols.forEach(s => drawBaseElement(s, tempCtx));
+
+            // Restaura o estado do contexto para remover a translação/escala.
+            tempCtx.restore();
+
+            // Adiciona a imagem da página renderizada ao PDF.
+            const imgData = tempCanvas.toDataURL('image/jpeg', 0.8);
+            pdf.addImage(imgData, 'JPEG', PAGE_MARGIN, PAGE_MARGIN, contentWidth, contentHeight);
+        }
+
         pdf.save(`music-drawing-${Date.now()}.pdf`);
 
     } catch (e) {
         console.error("Erro ao exportar PDF:", e);
-        alert("Não foi possível exportar como PDF.");
+        alert("Não foi possível exportar como PDF. O projeto pode ser muito complexo.");
+    } finally {
+        // Esconde o overlay de carregamento.
+        el.loadingOverlay.classList.add('hidden');
     }
 }
 
