@@ -180,9 +180,14 @@ function resizeAndRedraw() {
 function redrawAll() {
     ctx.clearRect(0, 0, el.canvas.width, el.canvas.height);
 
-    ctx.save();
-    ctx.scale(state.zoomLevel, state.zoomLevel);
+    // ESTAS LINHAS ESTAVAM CAUSANDO O ZOOM DUPLO E DEVEM SER REMOVIDAS OU COMENTADAS.
+    // A transformação de zoom/escala deve ser controlada apenas pelo CSS.
+    // ctx.save();
+    // ctx.scale(state.zoomLevel, state.zoomLevel);
 
+    // O restante do código de desenho permanece o mesmo. Ele agora desenhará
+    // diretamente nas coordenadas do "mundo" (o canvas de 60000px), e o CSS
+    // se encarregará de exibir essa visualização com o zoom e scroll corretos.
     state.composition.strokes.forEach(stroke => {
         if (stroke.points.length < 2) return;
         drawElementWithEffects(stroke);
@@ -192,7 +197,6 @@ function redrawAll() {
     if (state.isSelecting) {
         drawMarquee();
     }
-
     state.selectedElements.forEach(elementId => {
         const element = findElementById(elementId);
         if (element) {
@@ -200,7 +204,10 @@ function redrawAll() {
         }
     });
 
-    ctx.restore();
+    // ESTA LINHA CORRESPONDIA AO CTX.SAVE() E TAMBÉM DEVE SER REMOVIDA/COMENTADA.
+    // ctx.restore();
+    
+    // As réguas são desenhadas separadamente e não são afetadas por esta mudança.
     drawRulers();
     updateExportSelectionVisuals();
 }
@@ -439,16 +446,27 @@ function setupEventListeners() {
 }
 
 function getEventPos(e) {
-    const rect = el.mainCanvasArea.getBoundingClientRect();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    let clientX, clientY;
+    if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+    } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
+    }
 
-    const x = (clientX - rect.left + el.mainCanvasArea.scrollLeft) / state.zoomLevel;
-    const y = (clientY - rect.top + el.mainCanvasArea.scrollTop) / state.zoomLevel;
+    const scrollContainerRect = el.mainCanvasArea.getBoundingClientRect();
+    const clickX_In_VisibleContainer = clientX - scrollContainerRect.left;
+    const clickY_In_VisibleContainer = clientY - scrollContainerRect.top;
 
-    return { x, y };
+    const totalOffsetX_Scaled = clickX_In_VisibleContainer + el.mainCanvasArea.scrollLeft;
+    const totalOffsetY_Scaled = clickY_In_VisibleContainer + el.mainCanvasArea.scrollTop;
+
+    const finalX = totalOffsetX_Scaled / state.zoomLevel;
+    const finalY = totalOffsetY_Scaled / state.zoomLevel;
+
+    return { x: finalX, y: finalY };
 }
-
 function startAction(e) {
     if (e.target === el.playhead) {
         state.isDraggingPlayhead = true;
