@@ -1240,8 +1240,6 @@ function applyEffectToSelectedElements(effectType, sliderValue) {
     redrawAll();
 }
 
-// NOVO: Função unificada para atualizar todos os controles (cor, espessura, efeitos)
-// NOVO: Função unificada para atualizar todos os controles (cor, espessura, efeitos)
 function updateControlsForSelection() {
     if (state.selectedElements.length === 0) {
         resetEffectSliders();
