@@ -312,4 +312,260 @@ body.mobile-mode #playBtnText { font-size: 0.9rem;}
     }
 }
 
+#note-tuning-panel {
+    background-color: rgba(128, 128, 128, 0.1);
+    padding: 0.75rem;
+    border-radius: 12px;
+    margin-top: 1rem;
+    border: 1px solid var(--border-color-dark);
+}
 
+.note-display {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background-color: rgba(0,0,0,0.2);
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+    font-size: 1rem;
+}
+
+.note-display strong {
+    font-size: 1.2rem;
+    color: var(--primary-glow);
+    text-shadow: 0 0 5px var(--primary-glow);
+}
+
+.note-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+/* ==========================================================================
+   8. Ajustes Finos de Componentes
+   ========================================================================== */
+
+/* Corrige o padding e o tamanho da fonte dos botões de ajuste de nota */
+.note-controls .tool-btn {
+    padding: 6px 10px; /* Reduz o preenchimento vertical e horizontal */
+    font-size: 0.8rem;   /* Diminui o tamanho do texto */
+    font-weight: 400;  /* Deixa a fonte um pouco mais leve */
+}
+
+/* NO FICHEIRO style.css, ADICIONE ESTE BLOCO NO FINAL */
+
+/* ==========================================================================
+   9. Micro-interações dos Ícones
+   ========================================================================== */
+
+/* Aplica uma transição suave a todos os SVGs dentro dos botões */
+.tool-btn svg, .play-btn svg {
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); /* Uma transição com um pequeno "salto" */
+}
+
+/* Aumenta ligeiramente o ícone ao passar o mouse sobre o botão */
+.tool-btn:hover svg, .play-btn:hover svg {
+    transform: scale(1.15);
+}
+
+/* Remove a animação em botões desativados */
+.tool-btn:disabled:hover svg, .play-btn:disabled:hover svg {
+    transform: none;
+}
+
+/* NO FICHEIRO style.css, ADICIONE ESTE BLOCO NO FINAL */
+
+/* ==========================================================================
+   10. Estilos do Modal do Manual
+   ========================================================================== */
+
+#manual-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6); /* Fundo escurecido */
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+#manual-modal-overlay:not(.hidden) {
+    opacity: 1;
+    visibility: visible;
+}
+
+#manual-modal-content {
+    background-color: var(--bg-dark-accent);
+    color: var(--text-light);
+    padding: 2rem;
+    border-radius: 16px;
+    width: 90%;
+    max-width: 900px;
+    height: 85vh;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    border: 1px solid var(--border-color-dark);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    transform: scale(0.95);
+    transition: transform 0.3s ease;
+}
+
+#manual-modal-overlay:not(.hidden) #manual-modal-content {
+    transform: scale(1);
+}
+
+#manual-modal-close {
+    position: absolute;
+    top: 1rem;
+    right: 1.5rem;
+    background: none;
+    border: none;
+    font-size: 2.5rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    line-height: 1;
+    transition: color 0.2s ease, transform 0.2s ease;
+}
+
+#manual-modal-close:hover {
+    color: var(--danger-glow);
+    transform: scale(1.1);
+}
+
+#manual-body {
+    overflow-y: auto; /* Permite a rolagem do conteúdo */
+    height: 100%;
+    padding-right: 1rem; /* Espaço para a barra de rolagem */
+}
+
+/* Ajustes no conteúdo do manual para caber no modal */
+#manual-body h1 { font-size: 2.5rem; }
+#manual-body h2 { font-size: 1.8rem; }
+#manual-body .manual-image { max-width: 80%; margin-left: auto; margin-right: auto; }
+
+/* NO FICHEIRO style.css, ADICIONE ESTE BLOCO NO FINAL */
+
+/* ==========================================================================
+   11. Estilos para o Conteúdo do Manual no Modal
+   ========================================================================== */
+
+/* Define a formatação geral do texto dentro do modal */
+#manual-body {
+    color: var(--text-dark); /* Cor de texto mais suave para leitura */
+    line-height: 1.7;
+    font-family: 'Inter', sans-serif;
+}
+
+/* Estilos para todos os cabeçalhos */
+#manual-body h1, 
+#manual-body h2, 
+#manual-body h3, 
+#manual-body h4 {
+    font-family: 'Poppins', sans-serif;
+    color: var(--text-light);
+    border-bottom: 1px solid var(--border-color-dark);
+    padding-bottom: 12px;
+    margin-top: 40px;
+    margin-bottom: 24px;
+    font-weight: 600;
+}
+
+#manual-body h1 {
+    font-size: 2.2rem;
+    text-align: center;
+    border-bottom-width: 2px;
+    border-bottom-color: var(--primary-glow);
+    text-shadow: 0 0 8px var(--primary-glow);
+}
+
+#manual-body h2 {
+    font-size: 1.8rem;
+}
+
+#manual-body h3 {
+    font-size: 1.4rem;
+    color: var(--primary-glow);
+    border-bottom: none; /* Remove a linha de baixo para subtítulos */
+}
+
+#manual-body h4 {
+    font-size: 1.1rem;
+    border-bottom: none;
+    margin-top: 24px;
+    font-weight: 700;
+    color: var(--text-light);
+}
+
+/* Estilos para parágrafos e itens de lista */
+#manual-body p, 
+#manual-body li {
+    margin-bottom: 16px;
+    font-size: 1rem;
+}
+
+#manual-body ul {
+    list-style-position: outside;
+    padding-left: 25px;
+    list-style-type: disc;
+}
+
+/* Estilo para o parágrafo de introdução */
+#manual-body .intro-p {
+    font-size: 1.1rem;
+    text-align: center;
+    color: var(--text-secondary);
+    margin-bottom: 50px;
+    max-width: 700px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Estilo para o texto em negrito */
+#manual-body strong {
+    font-weight: 700;
+    color: var(--text-light);
+}
+
+/* Estilo para blocos de código */
+#manual-body code {
+    background-color: rgba(169, 114, 255, 0.1);
+    color: #f898b8; /* Cor rosa claro para boa legibilidade */
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 0.95rem;
+}
+
+/* Estilo para as caixas de dica */
+#manual-body blockquote {
+    background-color: rgba(99, 159, 255, 0.1); /* Usa o brilho secundário */
+    border-left: 4px solid var(--secondary-glow);
+    margin: 24px 0;
+    padding: 16px 24px;
+    border-radius: 0 8px 8px 0;
+}
+
+#manual-body blockquote p {
+    font-size: 1rem;
+    margin-bottom: 0;
+    color: var(--text-dark);
+}
+
+/* Garante que as imagens se ajustem bem */
+#manual-body .manual-image {
+    border-radius: 8px;
+    border: 1px solid var(--border-color-dark);
+    margin: 24px auto;
+    display: block;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}

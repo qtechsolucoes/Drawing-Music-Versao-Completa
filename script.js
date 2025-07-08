@@ -27,6 +27,7 @@ const el = {
     exportBtn: d.getElementById('exportBtn'),
     exportJpgBtn: d.getElementById('exportJpgBtn'), exportPdfBtn: d.getElementById('exportPdfBtn'), exportWavBtn: d.getElementById('exportWavBtn'),
     undoBtn: d.getElementById('undoBtn'), redoBtn: d.getElementById('redoBtn'),
+    toggleGridBtn: d.getElementById('toggleGridBtn'),
     zoomInBtn: d.getElementById('zoomInBtn'),
     zoomOutBtn: d.getElementById('zoomOutBtn'),
 
@@ -69,12 +70,23 @@ const el = {
         sine: d.getElementById('sine'), square: d.getElementById('square'), sawtooth: d.getElementById('sawtooth'),
         triangle: d.getElementById('triangle'), fm: d.getElementById('fm'), pulse: d.getElementById('pulse'),
         organ: d.getElementById('organ'), noise: d.getElementById('noise'),
-    }
+    },
+    noteTuningPanel: d.getElementById('note-tuning-panel'),
+    noteDisplay: d.getElementById('noteDisplay'),
+    nudgeUpBtn: d.getElementById('nudgeUpBtn'),
+    nudgeDownBtn: d.getElementById('nudgeDownBtn'),
+    manualModalOverlay: d.getElementById('manual-modal-overlay'),
+    manualModalClose: d.getElementById('manual-modal-close'),
+    manualBody: d.getElementById('manual-body'),
+    manualBtn: d.getElementById('manualBtn'),
 };
 
 const ctx = el.canvas.getContext('2d');
 const yRulerCtx = el.yRulerCanvas.getContext('2d');
 const xRulerCtx = el.xRulerCanvas.getContext('2d');
+const NOTE_NAMES = ['C', 'C#/Db', 'D', 'D#/Eb', 'E', 'F', 'F#/Gb', 'G', 'G#/Ab', 'A', 'A#/Bb', 'B'];
+const A4_FREQ = 440.0;
+const A4_INDEX = 9; // 'A' é a 10ª nota (índice 9) no nosso array
 
 let state = {
     isDrawing: false,
@@ -101,7 +113,9 @@ let state = {
     historyIndex: -1,
     selectedElements: [],
     zoomLevel: 1.0,
-
+    isGridEnabled: false,
+    gridSizeX: PIXELS_PER_SECOND / 4, // Grelha de semínima (1/4 de segundo)
+    gridSizeY: 20, // Ajusta a grelha verticalmente
     exportStartTime: 0,
     exportEndTime: 5,
     isDraggingStart: false,
@@ -117,6 +131,30 @@ let state = {
 };
 let clipboard = [];
 
+function frequencyToNote(freq) {
+    if (freq <= 0) return "--";
+    const semitonesFromA4 = 12 * Math.log2(freq / A4_FREQ);
+    const noteIndexRaw = (A4_INDEX + Math.round(semitonesFromA4));
+    const octave = Math.floor(noteIndexRaw / 12) + 4;
+    const noteName = NOTE_NAMES[noteIndexRaw % 12];
+    return `${noteName}${octave}`;
+}
+
+/**
+ * Converte uma nota (ex: "C#4") de volta para a sua frequência em Hz.
+ */
+function noteToFrequency(noteNameStr) {
+    const noteMatch = noteNameStr.match(/([A-G]#?)([0-9]+)/);
+    if (!noteMatch) return null;
+
+    const name = noteMatch[1];
+    const octave = parseInt(noteMatch[2], 10);
+
+    const noteIndex = NOTE_NAMES.indexOf(name);
+    const semitonesFromA4 = (noteIndex - A4_INDEX) + (octave - 4) * 12;
+    
+    return A4_FREQ * Math.pow(2, semitonesFromA4 / 12);
+}
 // --- CORE FUNCTIONS ---
 
 function initApp(mode = 'pc') {
@@ -181,7 +219,7 @@ function resizeAndRedraw() {
 
 function redrawAll() {
     ctx.clearRect(0, 0, el.canvas.width, el.canvas.height);
-
+     drawGrid();
     state.composition.strokes.forEach(stroke => {
         if (stroke.points.length < 2) return;
         drawElementWithEffects(stroke);
@@ -201,6 +239,29 @@ function redrawAll() {
     updateExportSelectionVisuals();
 }
 
+function drawGrid() {
+    if (!state.isGridEnabled) return;
+
+    const gridColor = getComputedStyle(d.documentElement).getPropertyValue('--border-color-dark').replace(/[^,]+(?=\))/, '0.5');
+    ctx.strokeStyle = gridColor;
+    ctx.lineWidth = 0.5;
+
+    // Linhas verticais (Tempo)
+    for (let x = 0; x < el.canvas.width; x += state.gridSizeX) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, el.canvas.height);
+        ctx.stroke();
+    }
+
+    // Linhas horizontais (Frequência)
+    for (let y = 0; y < el.canvas.height; y += state.gridSizeY) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(el.canvas.width, y);
+        ctx.stroke();
+    }
+}
 
 function drawRulers() {
     xRulerCtx.clearRect(0, 0, el.xRulerCanvas.width, el.xRulerCanvas.height);
@@ -316,8 +377,12 @@ function setupMobileToolbar() {
 }
 
 function setupEventListeners() {
-        d.getElementById('manualBtn')?.addEventListener('click', () => {
-        window.open('manual.html', '_blank');
+    el.manualBtn?.addEventListener('click', toggleManualModal);
+    el.manualModalClose?.addEventListener('click', toggleManualModal);
+    el.manualModalOverlay?.addEventListener('click', (e) => {
+        if (e.target === el.manualModalOverlay) {
+            toggleManualModal();
+        }
     });
     window.addEventListener('resize', resizeAndRedraw);
     el.mainCanvasArea.addEventListener('scroll', redrawAll);
@@ -337,7 +402,7 @@ function setupEventListeners() {
     el.themeToggle.addEventListener('click', () => applyTheme(d.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'));
 
     Object.keys(el.tools).forEach(key => el.tools[key]?.addEventListener('click', () => setActiveTool(key)));
-
+    el.toggleGridBtn.addEventListener('click', toggleGrid);
     // NOVO: Event listeners para edição de cor e espessura
     el.colorPicker.addEventListener('input', (e) => {
         if (state.selectedElements.length > 0) {
@@ -349,6 +414,34 @@ function setupEventListeners() {
             redrawAll();
         }
     });
+
+    let isManualLoaded = false;
+async function toggleManualModal() {
+    if (!isManualLoaded) {
+        try {
+            const response = await fetch('manual.html');
+            if (!response.ok) throw new Error('Falha ao carregar o manual.');
+            
+            const manualHTML = await response.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(manualHTML, 'text/html');
+            const manualContainer = doc.querySelector('.manual-container');
+            
+            if (manualContainer) {
+                el.manualBody.innerHTML = manualContainer.innerHTML;
+                isManualLoaded = true;
+            } else {
+                throw new Error('Conteúdo do manual não encontrado.');
+            }
+
+        } catch (error) {
+            console.error("Erro ao carregar o manual:", error);
+            el.manualBody.innerHTML = '<p>Ocorreu um erro ao carregar o manual. Por favor, tente novamente.</p>';
+        }
+    }
+    
+    el.manualModalOverlay.classList.toggle('hidden');
+}
 
     el.lineWidth.addEventListener('input', (e) => {
         if (state.selectedElements.length > 0) {
@@ -404,7 +497,8 @@ function setupEventListeners() {
 
     el.undoBtn.addEventListener('click', undo);
     el.redoBtn.addEventListener('click', redo);
-
+    el.nudgeUpBtn.addEventListener('click', () => nudgeSelectedNote(1));
+    el.nudgeDownBtn.addEventListener('click', () => nudgeSelectedNote(-1));
     el.exportStartHandle.addEventListener('mousedown', () => { state.isDraggingStart = true; });
     el.exportEndHandle.addEventListener('mousedown', () => { state.isDraggingEnd = true; });
     el.exportStartHandle.addEventListener('touchstart', (e) => { e.preventDefault(); state.isDraggingStart = true; }, { passive: false });
@@ -464,6 +558,62 @@ function setupEventListeners() {
     });
 }
 
+function toggleGrid() {
+    state.isGridEnabled = !state.isGridEnabled;
+    el.toggleGridBtn.classList.toggle('active', state.isGridEnabled);
+    redrawAll();
+}
+
+// SUBSTITUA A SUA FUNÇÃO nudgeSelectedNote POR ESTA VERSÃO:
+
+function nudgeSelectedNote(semitone_change) {
+    if (state.selectedElements.length !== 1) return;
+    const elementId = state.selectedElements[0];
+    const element = findElementById(elementId);
+    if (!element) return;
+
+    // 1. Calcula a frequência média atual do elemento
+    let currentY;
+    if (element.points) {
+        const totalY = element.points.reduce((sum, p) => sum + p.y, 0);
+        currentY = totalY / element.points.length;
+    } else {
+        currentY = element.y;
+    }
+    const currentFreq = yToFrequency(currentY);
+
+    // 2. Calcula o "índice de semitom" a partir da frequência, sem converter para texto
+    const semitonesFromA4 = 12 * Math.log2(currentFreq / A4_FREQ);
+    const currentNoteIndexRaw = Math.round(semitonesFromA4);
+
+    // 3. Aplica a mudança diretamente ao índice numérico
+    const newNoteIndexRaw = currentNoteIndexRaw + semitone_change;
+
+    // 4. Calcula a nova frequência a partir do novo índice
+    const newFreq = A4_FREQ * Math.pow(2, newNoteIndexRaw / 12);
+
+    // 5. Converte a nova frequência de volta para uma posição Y
+    const newY = yFromFrequency(newFreq);
+
+    // Calcula a diferença de Y e aplica a todos os pontos do elemento
+    const dy = newY - currentY;
+    
+    if (element.points) {
+        element.points.forEach(p => { p.y += dy; });
+    } else {
+        element.y += dy;
+        if (typeof element.endY !== 'undefined') {
+            element.endY += dy;
+        }
+    }
+    
+    // Atualiza a UI e salva o estado
+    updateControlsForSelection();
+    saveState();
+    redrawAll();
+}
+
+
 function getEventPos(e) {
     let clientX, clientY;
     if (e.touches && e.touches.length > 0) {
@@ -481,8 +631,12 @@ function getEventPos(e) {
     const totalOffsetX_Scaled = clickX_In_VisibleContainer + el.mainCanvasArea.scrollLeft;
     const totalOffsetY_Scaled = clickY_In_VisibleContainer + el.mainCanvasArea.scrollTop;
 
-    const finalX = totalOffsetX_Scaled / state.zoomLevel;
-    const finalY = totalOffsetY_Scaled / state.zoomLevel;
+    let finalX = totalOffsetX_Scaled / state.zoomLevel;
+    let finalY = totalOffsetY_Scaled / state.zoomLevel;
+        if (state.isGridEnabled) {
+            finalX = Math.round(finalX / state.gridSizeX) * state.gridSizeX;
+            finalY = Math.round(finalY / state.gridSizeY) * state.gridSizeY;
+        }
 
     return { x: finalX, y: finalY };
 }
@@ -1247,7 +1401,7 @@ function updateControlsForSelection() {
     }
 
     const selectedObjects = state.selectedElements.map(id => findElementById(id)).filter(Boolean);
-
+    
     // Atualizar Cor
     const firstColor = selectedObjects[0].color;
     const allSameColor = selectedObjects.every(el => el.color === firstColor);
@@ -1257,6 +1411,24 @@ function updateControlsForSelection() {
     const firstSize = selectedObjects[0].points ? selectedObjects[0].lineWidth : selectedObjects[0].size;
     const allSameSize = selectedObjects.every(el => (el.points ? el.lineWidth : el.size) === firstSize);
     el.lineWidth.value = allSameSize ? firstSize : 5;
+
+        // Lógica para o painel de ajuste de nota
+    if (selectedObjects.length === 1) {
+        const elem = selectedObjects[0];
+        let yPos;
+        if (elem.points) {
+            // Usa a média da altura para traços
+            const totalY = elem.points.reduce((sum, p) => sum + p.y, 0);
+            yPos = totalY / elem.points.length;
+        } else {
+            yPos = elem.y;
+        }
+        const freq = yToFrequency(yPos);
+        el.noteDisplay.textContent = frequencyToNote(freq);
+        el.noteTuningPanel.classList.remove('hidden');
+    } else {
+        el.noteTuningPanel.classList.add('hidden');
+    }
 
     // Atualizar Sliders de Efeitos
     Object.keys(el.effectSliders).forEach(key => {
